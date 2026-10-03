@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { createApp } from "../src/server.mjs";
 import { botDecision } from "../src/agents.mjs";
 
@@ -27,12 +26,8 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
     status: { available: true, version: "fixture", model: "fixture" },
     provider,
   });
-  const port = Number(
-    execFileSync("port-selector", ["--name", "e2e"], {
-      encoding: "utf8",
-    }).trim(),
-  );
-  await new Promise((r) => app.server.listen(port, "127.0.0.1", r));
+  await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
+  const port = app.server.address().port;
   t.after(async () => {
     app.stop();
     await rm(dir, { recursive: true, force: true });

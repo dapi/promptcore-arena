@@ -1,32 +1,32 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createApp } from "../src/server.mjs";
-let port;
-try {
-  port = Number(
-    process.env.PORT ||
+let port = 0;
+if (process.env.PORT !== undefined) port = Number(process.env.PORT);
+else {
+  try {
+    port = Number(
       execFileSync("port-selector", ["--name", "web"], {
         encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
       }).trim(),
-  );
-} catch {
-  console.error(
-    "Для выбора локального порта требуется port-selector. Можно также явно задать PORT.",
-  );
-  process.exit(1);
+    );
+  } catch {
+    // Let the OS choose a free port when port-selector is not installed.
+  }
 }
-if (!Number.isInteger(port) || port < 1 || port > 65535)
+if (!Number.isInteger(port) || port < 0 || port > 65535)
   throw new Error("Неверный PORT");
 const { server, stop } = await createApp();
 server.on("error", (error) => {
   console.error(
     error.code === "EADDRINUSE"
-      ? "Порт занят. Проверьте запущенную копию игры или выделите другой порт через port-selector."
+      ? "Порт занят. Проверьте запущенную копию игры или задайте другой PORT."
       : error.message,
   );
   process.exit(1);
 });
 server.listen(port, "127.0.0.1", () => {
-  const url = `http://127.0.0.1:${port}`;
+  const url = `http://127.0.0.1:${server.address().port}`;
   console.log(`PromptCore Arena → ${url}`);
   if (!process.argv.includes("--no-open")) {
     const command =
