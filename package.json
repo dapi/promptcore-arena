@@ -1,0 +1,16 @@
+{
+  "name": "promptcore-arena",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "dev": "node scripts/start.mjs --no-open",
+    "test": "node --test",
+    "playtest": "node scripts/gameplay-playtest.mjs",
+    "check": "node --check src/engine.mjs && node --check src/server.mjs && node --check src/agents.mjs && node --check web/app.js && node --check web/arena.js"
+  }
+}

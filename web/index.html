@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#09110f" />
+    <title>PromptCore Arena · локальная игра</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#arena">К арене</a>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="PromptCore Arena">
+        <img src="/logo.svg" alt="" width="390" height="64" />
+      </a>
+      <nav aria-label="Разделы">
+        <button class="tab active" data-tab="arena">Арена</button
+        ><button class="tab" data-tab="archive">
+          История боёв <span id="archive-count">0</span></button
+        ><button class="tab" data-tab="rules">Правила</button>
+      </nav>
+      <div class="local-status"><i></i> Локальный запуск</div>
+    </header>
+    <main>
+      <section id="arena-tab" class="tab-page">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">СТРАТЕГИЯ НАЧИНАЕТСЯ СО СЛОВ</div>
+            <h1>Твои правила. <span>Их бой.</span></h1>
+          </div>
+          <div class="session-tag">
+            <span class="tiny">ПОЛИГОН 01</span
+            ><strong>12 × 12 <span>/</span> 40 ходов</strong>
+          </div>
+        </div>
+        <p id="app-message" role="status" class="app-message"></p>
+        <section id="run-progress" class="run-progress" aria-label="Ход расчёта матча" hidden>
+          <span class="progress-spinner" aria-hidden="true"></span>
+          <div class="run-progress-copy"><strong id="progress-title" role="status">Запускаю бой…</strong><span id="progress-detail">Передаю стратегии бойцам</span></div>
+          <div class="run-progress-counter"><span id="progress-count">0 / 40 ходов</span><progress id="battle-progress" max="40" value="0" aria-label="Рассчитанные ходы"></progress></div>
+          <strong id="progress-clock" class="progress-clock">00:00</strong>
+        </section>
+        <div class="workspace">
+          <aside class="setup-panel">
+            <div class="section-label">
+              <span>01 / БОЙЦЫ</span><span class="tiny">2 АГЕНТА</span>
+            </div>
+            <div class="fighter-editor fighter-a">
+              <div class="fighter-heading">
+                <img class="avatar" id="avatar-image-a" alt="Аватар бойца A" width="44" height="44" />
+                <div>
+                  <label class="sr-only" for="fighter-name-a">Имя бойца A</label><input id="fighter-name-a" class="fighter-name" value="Вектор" maxlength="24" aria-label="Имя бойца A" />
+                  <span class="tiny">КОНТРОЛЬ ТЕРРИТОРИИ</span>
+                </div>
+                <span class="fighter-dot"></span>
+              </div>
+              <label for="prompt-a">Стратегия бойца</label
+              ><textarea
+                id="prompt-a"
+                maxlength="6000"
+                spellcheck="false"
+              ></textarea>
+              <div class="editor-foot">
+                <button type="button" class="text-button" data-reset="0">
+                  Сбросить</button
+                ><span>ПРОМПТ / A</span>
+              </div>
+            </div>
+            <div class="fighter-editor fighter-b">
+              <div class="fighter-heading">
+                <img class="avatar" id="avatar-image-b" alt="Аватар бойца B" width="44" height="44" />
+                <div>
+                  <label class="sr-only" for="fighter-name-b">Имя бойца B</label><input id="fighter-name-b" class="fighter-name" value="Фантом" maxlength="24" aria-label="Имя бойца B" />
+                  <span class="tiny">АГРЕССИВНАЯ ТАКТИКА</span>
+                </div>
+                <span class="fighter-dot"></span>
+              </div>
+              <label for="prompt-b">Стратегия бойца</label
+              ><textarea
+                id="prompt-b"
+                maxlength="6000"
+                spellcheck="false"
+              ></textarea>
+              <div class="editor-foot">
+                <button type="button" class="text-button" data-reset="1">
+                  Сбросить</button
+                ><span>ПРОМПТ / B</span>
+              </div>
+            </div>
+            <div class="match-settings">
+              <label for="mode">Управление бойцами</label
+              ><select id="mode">
+                <option value="codex">Codex · промпты управляют боем</option>
+                <option value="training">Тренировка · встроенные боты</option>
+              </select>
+              <p id="mode-note" class="field-note"></p>
+              <div class="seed-row">
+                <div>
+                  <label for="seed">Карта / seed</label
+                  ><input id="seed" value="sector-07" maxlength="80" required />
+                </div>
+                <button
+                  id="random-seed"
+                  class="icon-button"
+                  aria-label="Новая случайная карта"
+                  title="Новая карта"
+                >
+                  ⤨
+                </button>
+              </div>
+              <label class="swap-label"
+                ><input type="checkbox" id="swap" /> Поменять стартовые
+                позиции</label
+              >
+            </div>
+            <button id="run" class="primary">
+              <span>Запустить бой</span><span>↗</span></button
+            ><button id="series" class="secondary">
+              Сравнить стратегии <span>4 боя</span></button
+            ><button id="cancel" class="danger" hidden>
+              Остановить запуск
+            </button>
+          </aside>
+          <section
+            class="arena-panel"
+            id="arena"
+            aria-label="Арена и просмотр боя"
+          >
+            <div class="arena-top">
+              <div>
+                <span class="status-dot" id="battle-dot"></span
+                ><strong id="battle-status">Арена готова</strong>
+              </div>
+              <span class="tiny" id="seed-label">SECTOR-07</span>
+            </div>
+            <div class="arena-meta">
+              <span id="mode-label">ПРЕДПРОСМОТР КАРТЫ</span
+              ><span
+                >ХОД <b id="turn-label">00</b
+                ><span class="dim"> / 40</span></span
+              >
+            </div>
+            <div class="canvas-wrap">
+              <canvas
+                id="battlefield"
+                width="840"
+                height="840"
+                role="img"
+                aria-label="Арена 12 на 12 клеток. Запустите бой."
+              ></canvas>
+              <div class="board-corner tl"></div>
+              <div class="board-corner tr"></div>
+              <div class="board-corner bl"></div>
+              <div class="board-corner br"></div>
+              <div class="board-overlay" id="board-overlay">
+                <span>СИСТЕМЫ ГОТОВЫ</span
+                ><strong>Один промпт меняет всё.</strong
+                ><small>Задай стратегию и отправь бойцов на арену</small>
+              </div>
+              <div id="result-banner" class="result-banner" hidden></div>
+            </div>
+            <div class="legend">
+              <span><i class="legend-core"></i> Ядро</span
+              ><span><i class="legend-energy"></i> Энергия</span
+              ><span><i class="legend-wall"></i> Препятствие</span
+              ><span><i class="legend-trap"></i> Ловушка</span>
+            </div>
+            <div class="playback">
+              <div class="play-buttons">
+                <button
+                  id="prev"
+                  class="icon-button"
+                  aria-label="Предыдущий ход"
+                >
+                  ❮</button
+                ><button
+                  id="play"
+                  class="play-button"
+                  aria-label="Воспроизвести повтор"
+                >
+                  ▶</button
+                ><button
+                  id="next"
+                  class="icon-button"
+                  aria-label="Следующий ход"
+                >
+                  ❯
+                </button>
+              </div>
+              <label class="sr-only" for="timeline">Ход повтора</label
+              ><input
+                id="timeline"
+                type="range"
+                min="0"
+                max="0"
+                value="0"
+              /><span id="frame-label" class="tiny">00 / 00</span
+              ><label class="sr-only" for="speed">Скорость повтора</label
+              ><select id="speed">
+                <option value="1600">0.5×</option>
+                <option value="800" selected>1×</option>
+                <option value="400">2×</option>
+                <option value="200">4×</option>
+              </select>
+            </div>
+            <div class="arena-bottom">
+              <div class="pov-control">
+                <span class="tiny">ОБЗОР</span
+                ><button class="selected" data-pov="all">Вся арена</button
+                ><button data-pov="A">A</button><button data-pov="B">B</button>
+              </div>
+              <button id="live" class="text-button" hidden>
+                К текущему ходу ↗</button
+              ><button id="download" class="text-button" disabled>
+                Скачать повтор ↓
+              </button>
+            </div>
+            <div id="series-results" class="series-results" hidden></div>
+          </section>
+          <aside class="telemetry-panel">
+            <div class="section-label">
+              <span>02 / ТЕЛЕМЕТРИЯ</span
+              ><span class="tiny" id="live-badge">ОЖИДАНИЕ</span>
+            </div>
+            <section id="model-monitor" class="model-monitor" aria-label="Поток сообщений Codex" hidden>
+            <div class="monitor-title"><h2>Сейчас в Codex</h2><span id="stream-status">Подключение…</span></div>
+            <p class="monitor-note">Пояснения появятся, если Codex их отправит. Итоговое действие видно в ответе модели.</p>
+            <div id="model-agents"></div>
+          </section>
+          <div id="fighter-stats"></div>
+            <div class="feed-header">
+              <h2>Хроника боя</h2>
+              <span id="event-count" class="tiny">0 СОБЫТИЙ</span>
+            </div>
+            <div
+              id="event-feed"
+              class="event-feed"
+              aria-label="События текущего хода"
+            >
+              <div class="empty-feed">
+                <span>⌁</span>
+                <p>Пока тихо.</p>
+                <small
+                  >Здесь появятся выстрелы, захваты и решения бойцов.</small
+                >
+              </div>
+            </div>
+            <div class="intent-panel">
+              <span class="section-label">НАМЕРЕНИЯ АГЕНТОВ</span>
+              <div id="intent-a" class="intent fighter-a">
+                <b>A</b>
+                <p>Жду сигнала к старту.</p>
+              </div>
+              <div id="intent-b" class="intent fighter-b">
+                <b>B</b>
+                <p>Готов к первому ходу.</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="bottom-note">
+          <span>ПРОМПТ → РЕШЕНИЕ → ДЕЙСТВИЕ</span
+          ><span>Победителя определяет движок. Каждый ход сохраняется.</span
+          ><span id="model-footer">CODEX / LOCAL</span>
+        </div>
+      </section>
+      <section id="archive-tab" class="tab-page" hidden>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">КАЖДЫЙ БОЙ ОСТАЁТСЯ</div>
+            <h1>История <span>соперничества.</span></h1>
+          </div>
+          <button id="refresh-archive" class="secondary">Обновить ↻</button>
+        </div>
+        <div id="archive-list"></div>
+      </section>
+      <section id="rules-tab" class="tab-page" hidden>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">ARENA / 1</div>
+            <h1>Правила <span>арены.</span></h1>
+          </div>
+        </div>
+        <div class="rules-layout">
+          <article>
+            <h2>Одинаковые условия.</h2>
+            <p>
+              Два бойца, 10 здоровья и 10 энергии на старте. На симметричной
+              карте 12 × 12 они одновременно выбирают по одному действию за ход.
+              Всего 40 ходов.
+            </p>
+            <p>
+              Со второго хода каждый восстанавливает 1 энергию, максимум — 12.
+              Обзор ограничен радиусом 3. Сканирование увеличивает его до 6 на
+              два следующих хода.
+            </p>
+            <h2>Захвати ядро. Или выживи.</h2>
+            <p>
+              Четыре центральные клетки дают по одному очку контроля за каждый
+              ход на них. Последний выживший побеждает сразу. На 40-м ходу
+              сравниваются контроль, здоровье, собранная энергия. При равенстве
+              — ничья.
+            </p>
+            <h2>У каждого своя картина.</h2>
+            <p>
+              Codex получает только наблюдение своего бойца и его промпт. Чужие
+              стратегии и невидимые позиции скрыты. Атаки считаются
+              одновременно; переместившийся соперник может уйти с линии огня.
+            </p>
+            <p>
+              Режим тренировки использует готовых ботов: текст промпта в нём не
+              влияет на поведение. Для сравнения своих стратегий выбери Codex.
+            </p>
+          </article>
+          <div class="action-rules">
+            <div>
+              <b>↗ Перемещение <em>1 ⚡</em></b>
+              <p>
+                Одна соседняя клетка. В столкновении оба остаются на месте;
+                обмен позициями разрешён.
+              </p>
+            </div>
+            <div>
+              <b>⌖ Атака <em>3 ⚡</em></b>
+              <p>
+                3 урона по клетке на прямой, дальность до 3. Стены блокируют
+                выстрел.
+              </p>
+            </div>
+            <div>
+              <b>◎ Сканирование <em>2 ⚡</em></b>
+              <p>Увеличенный обзор и обнаружение ловушек на два наблюдения.</p>
+            </div>
+            <div>
+              <b>✳ Ловушка <em>3 ⚡</em></b>
+              <p>
+                4 урона вошедшему противнику. До двух ловушек на соседних
+                свободных клетках.
+              </p>
+            </div>
+            <div>
+              <b>◇ Защита <em>1 ⚡</em></b>
+              <p>Уменьшает каждое попадание на 2 в текущем ходу.</p>
+            </div>
+            <div>
+              <b>ϟ Сбор <em>0 ⚡</em></b>
+              <p>До 4 энергии из источника на своей или соседней клетке.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

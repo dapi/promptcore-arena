@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "target", "reason", "memory"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["move", "scan", "attack", "trap", "defend", "harvest"]
+    },
+    "target": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        { "type": "null" }
+      ]
+    },
+    "reason": { "type": "string" },
+    "memory": { "type": "string" }
+  }
+}
