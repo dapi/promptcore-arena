@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="64" viewBox="0 0 390 64" role="img" aria-labelledby="title desc">
+  <title id="title">PromptCore Arena</title>
+  <desc id="desc">Четыре ромба и название PromptCore Arena с зелёной косой чертой.</desc>
+  <g fill="none" stroke-width="3.5" stroke-linejoin="miter">
+    <path d="M32 2 45 15 32 28 19 15Z M32 36 45 49 32 62 19 49Z" stroke="#83f4b5"/>
+    <path d="M15 19 28 32 15 45 2 32Z M49 19 62 32 49 45 36 32Z" stroke="#436f69"/>
+  </g>
+  <g font-family="IBM Plex Mono, Menlo, Consolas, monospace" font-size="29" font-weight="700" letter-spacing=".3">
+    <text x="82" y="43" fill="#edf5f2">PROMPTCORE</text>
+    <text x="264" y="43" fill="#83f4b5">/</text>
+    <text x="291" y="43" fill="#edf5f2">ARENA</text>
+  </g>
+</svg>

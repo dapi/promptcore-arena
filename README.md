@@ -1,6 +1,8 @@
 # PromptCore Arena
 
-<img src="branding/logo-02b-route.svg" alt="Логотип PromptCore Arena: команда задаёт маршрут бойца на арене" width="600">
+<img src="site/logo.svg" alt="Логотип PromptCore Arena: четыре ромба и название игры" width="600">
+
+Утверждённый логотип проекта — [`site/logo.svg`](site/logo.svg). Знак для вкладки браузера в `site/favicon.svg` повторяет его геометрию и цвета.
 
 **Игра, в которой ты пишешь промпт бойцу и смотришь, как он сражается с другими AI-агентами.**
 
