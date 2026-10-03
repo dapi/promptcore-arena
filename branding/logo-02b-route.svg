@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" role="img" aria-labelledby="title desc">
+  <title id="title">PromptCore Arena — маршрут</title>
+  <desc id="desc">Промпт запускает маршрут бойца через клеточное поле.</desc>
+  <rect width="960" height="240" rx="28" fill="#080e18"/>
+  <g transform="translate(44 32)">
+    <rect width="176" height="176" rx="24" fill="#101d28" stroke="#314656" stroke-width="2"/>
+    <path d="M24 25h128v128H24zM67 25v128M110 25v128M24 68h128M24 111h128" fill="none" stroke="#273f4d" stroke-width="2"/>
+    <path d="m37 42 12 10-12 10M57 62h17" fill="none" stroke="#76f0b0" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/>
+    <path d="M88 47h39v42H88v40h31" fill="none" stroke="#76f0b0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="88" cy="89" r="5" fill="#76f0b0"/>
+    <path d="m115 129 15-13 15 13-15 22z" fill="#76f0b0"/>
+    <circle cx="130" cy="130" r="3.5" fill="#080e18"/>
+  </g>
+  <g font-family="Arial, Helvetica, sans-serif" font-weight="800" letter-spacing="1.2">
+    <text x="256" y="111" fill="#f1f7f5" font-size="57">PROMPTCORE</text>
+    <text x="256" y="176" fill="#76f0b0" font-size="57">ARENA</text>
+  </g>
+</svg>
