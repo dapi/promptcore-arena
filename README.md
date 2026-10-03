@@ -1,5 +1,3 @@
-# PromptCore Arena
-
 <img src="site/logo.svg" alt="PromptCore Arena" width="390">
 
 ## Объяснение игры для ребёнка
