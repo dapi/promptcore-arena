@@ -61,4 +61,5 @@
 ## Ссылки
 
 - [Core War](https://www.corewars.org/) — исторический источник идеи общей арены.
+- [ICWS ’94](https://corewars.org/docs/94spec.html) — спецификация MARS и языка Redcode.
 - [Digital Red Queen](https://arxiv.org/abs/2601.03335) — исследование эволюции Redcode-воинов с помощью LLM.
