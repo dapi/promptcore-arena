@@ -51,3 +51,13 @@ h1 em,.principle-content em{font-style:normal;color:var(--green)}
 @media(max-width:1050px){.hero{grid-template-columns:1fr;min-height:auto}.hero-copy{padding-bottom:40px}.hero-decoration{display:none}.arena-layout{grid-template-columns:1fr}.board-column{border-right:0;border-bottom:1px solid var(--line)}.board{max-width:470px}.section-heading p{max-width:45%}.principle-content{grid-template-columns:1fr}.footer{flex-wrap:wrap;padding:40px 0}}
 @media(max-width:700px){.page-shell{padding:0 18px}.topbar{height:75px}.brand img{width:clamp(125px,40vw,170px)}.topbar nav{gap:12px}.topbar nav a:not(.nav-github){display:none}.nav-github{font-size:.73rem;padding:9px 11px}.hero-copy{padding:70px 0 75px}.eyebrow{font-size:.67rem}h1{font-size:clamp(2.75rem,12vw,4.4rem);margin:24px 0}.hero-lead{font-size:1rem}.hero-note{line-height:1.5}.arena-section,.rules-section{padding:72px 0}.section-heading{display:block;margin-bottom:29px}.section-heading p{width:auto;max-width:none;margin:20px 0 0}.section-heading h2{font-size:2.55rem}.board-column{padding:16px}.board-wrap{padding:8px}.board-head{font-size:.58rem}.board-legend{font-size:.58rem;gap:11px;flex-wrap:wrap}.feed-column{padding:19px}.rules-grid,.references-grid{grid-template-columns:1fr}.rule-card{min-height:210px}.rule-icon{margin-bottom:20px}.principle-section{padding:70px 0}.principle-content{gap:22px}.principle-content h2{font-size:2.5rem}.references-section{padding:70px 0}.reference-card{min-height:auto}.reference-type{margin-bottom:20px}.footer{display:block;min-height:auto}.footer p{margin:22px 0}.footer>a:last-child{display:inline-block}}
 @media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}.button{transition:none}}
+
+/* Real gameplay recording replaces the staged demo. */
+.video-window video{display:block;width:100%;height:auto;aspect-ratio:16/9;background:#09120e}
+.demo-disclaimer{max-width:840px;line-height:1.7;font-size:.85rem}
+.pawn-a{color:#61d6ee;background:#132f39;top:30%;left:22%}
+.pawn-b{color:#b89aff;background:#28203b;top:53%;right:21%}
+.start-section{padding:95px 0 105px;border-bottom:1px solid var(--line);scroll-margin-top:35px}
+.start-command{background:#0a1421;border:1px solid var(--line);padding:24px 28px;color:#c7ebdd;font:clamp(.76rem,1.6vw,1rem)/1.9 'IBM Plex Mono',monospace;white-space:pre-wrap;overflow-wrap:anywhere;border-radius:8px;max-width:900px}
+.start-note{max-width:850px;color:var(--muted);font-size:.92rem;line-height:1.8;margin:24px 0}
+@media(max-width:700px){.start-section{padding:72px 0}.window-bar{padding:0 12px;font-size:.56rem;gap:8px}.demo-badge{font-size:.56rem}.start-command{padding:18px}.window-dots{display:none}}
