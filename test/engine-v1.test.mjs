@@ -9,7 +9,7 @@ import {
   key,
   VERSION,
   visibility,
-} from "../src/engine.mjs";
+} from "../src/engine-v1.mjs";
 import { botDecision, codexArgs } from "../src/agents.mjs";
 const action = (action, target = null) => ({ action, target, reason: "test" });
 const arena = () => {

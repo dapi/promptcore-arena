@@ -16,9 +16,19 @@ export class Arena {
     requestAnimationFrame(this.loop);
   }
   setFighters(value) {
-    this.fighters=normalizeFighters(value);
-    this.sprites??=new Map();
-    for(const f of this.fighters){const url=avatarUrl(f);if(!this.sprites.has(url)){const image=new Image();image.src=url;this.sprites.set(url,image);}}
+    this.fighters = normalizeFighters(value);
+    this.sprites ??= new Map();
+    for (const f of this.fighters) {
+      const url = avatarUrl(f);
+      if (!this.sprites.has(url)) {
+        const image = new Image();
+        image.src = url;
+        this.sprites.set(url, image);
+      }
+    }
+  }
+  setActivity(agents) {
+    this.activity = agents;
   }
   setFrame(frame, animate = true) {
     this.previous = this.frame;
@@ -73,7 +83,9 @@ export class Arena {
     requestAnimationFrame(this.loop);
   }
   draw(t) {
-    const COLORS=Object.fromEntries(this.fighters.map(f=>[f.id,f.color]));
+    const COLORS = Object.fromEntries(
+      this.fighters.map((f) => [f.id, f.color]),
+    );
     const c = this.ctx,
       s = this.frame.state,
       time = this.reduced ? 0 : t * 0.001,
@@ -115,23 +127,31 @@ export class Arena {
       c.strokeRect(x - 27, y - 27, 54, 54);
     }
     const pulse = 0.5 + 0.5 * Math.sin(time * 1.8);
-    this.circle([420, 420], 54, "#abd67244", 1);
-    this.circle([420, 420], 44, "#b6f58233", 1);
+    const center = this.point(
+      s.points.reduce(
+        (sum, p) => [
+          sum[0] + p[0] / s.points.length,
+          sum[1] + p[1] / s.points.length,
+        ],
+        [0, 0],
+      ),
+    );
+    const [cx, cy] = center;
+    this.circle(center, 54, "#abd67244", 1);
+    this.circle(center, 44, "#b6f58233", 1);
     this.line(
-      [402, 420],
-      [438, 420],
+      [cx - 18, cy],
+      [cx + 18, cy],
       `rgba(193,248,135,${0.25 + pulse * 0.25})`,
-      1,
     );
     this.line(
-      [420, 402],
-      [420, 438],
+      [cx, cy - 18],
+      [cx, cy + 18],
       `rgba(193,248,135,${0.25 + pulse * 0.25})`,
-      1,
     );
     c.font = "8px monospace";
     c.fillStyle = "#b6f58277";
-    c.fillText("CORE", 420, 443);
+    c.fillText(s.zone ? "ЗОНА" : "CORE", cx, cy + 23);
     for (const p of s.walls) {
       const [x, y] = this.point(p);
       c.fillStyle = "#07120b";
@@ -148,9 +168,9 @@ export class Arena {
       this.line([x - 18, y - 17], [x + 16, y + 6], "#46654b55");
       this.line([x - 18, y - 8], [x + 5, y + 7], "#46654b55");
     }
-    for (const v of s.sources) {
+    for (const v of s.batteries ?? s.sources ?? []) {
       const [x, y] = this.point(v.pos);
-      const alpha = 0.35 + (v.amount / 12) * 0.65;
+      const alpha = s.batteries ? 1 : 0.35 + (v.amount / 12) * 0.65;
       c.globalAlpha = alpha;
       this.circle([x, y], 21, "#e4bf7533", 1);
       c.save();
@@ -167,7 +187,7 @@ export class Arena {
       c.globalAlpha = 1;
       c.font = "8px monospace";
       c.fillStyle = "#b9a975";
-      c.fillText(v.amount, x, y + 28);
+      c.fillText(s.batteries ? `+${v.amount}` : v.amount, x, y + 28);
     }
     for (const trap of s.traps) {
       const a = s.agents.find((a) => a.id === this.pov);
@@ -206,9 +226,51 @@ export class Arena {
       c.fillStyle = glow;
       c.fillRect(x - 43, y - 43, 86, 86);
       this.circle([x, y + 2], 27, color + "44", 1);
-      const fighter=this.fighters.find(f=>f.id===a.id);
-      const sprite=this.sprites.get(avatarUrl(fighter));
-      if(sprite?.complete){c.shadowColor=color;c.shadowBlur=12;c.drawImage(sprite,x-25,y-25,50,50);c.shadowBlur=0;}
+      const fighter = this.fighters.find((f) => f.id === a.id);
+      const sprite = this.sprites.get(avatarUrl(fighter));
+      const phase = this.activity?.[a.id]?.phase;
+      const thinking = [
+        "starting",
+        "connected",
+        "thinking",
+        "summary",
+        "message",
+        "received",
+      ].includes(phase);
+      const lift = thinking
+        ? this.reduced
+          ? -3
+          : -4 + Math.sin(time * 3.5) * 3
+        : 0;
+      if (thinking) {
+        c.save();
+        c.strokeStyle = color;
+        c.lineWidth = 2;
+        c.shadowColor = color;
+        c.shadowBlur = 8;
+        for (let i = 0; i < 2; i++) {
+          const angle = time * 2.8 + i * Math.PI;
+          c.beginPath();
+          c.arc(x, y + lift, 31, angle, angle + Math.PI * 0.55);
+          c.stroke();
+        }
+        c.restore();
+        for (let i = 0; i < 3; i++)
+          this.circle(
+            [x - 8 + i * 8, y + 22 + lift],
+            1.8,
+            color,
+            1,
+            3,
+            this.reduced || Math.floor(time * 3) % 3 === i,
+          );
+      }
+      if (sprite?.complete) {
+        c.shadowColor = color;
+        c.shadowBlur = 12;
+        c.drawImage(sprite, x - 25, y - 25 + lift, 50, 50);
+        c.shadowBlur = 0;
+      }
 
       c.fillStyle = "#050b08";
       c.fillRect(x - 22, y + 30, 44, 4);
@@ -216,7 +278,11 @@ export class Arena {
       c.fillRect(x - 22, y + 30, (44 * a.hp) / 10, 4);
       c.fillStyle = color;
       c.font = "bold 9px monospace";
-      c.fillText(a.id, x, y - 31);
+      c.fillText(
+        thinking ? "ДУМАЕТ" : phase === "ready" ? "ГОТОВ ✓" : a.id,
+        x,
+        y - 34 + lift,
+      );
       if (this.frame.decisions?.[a.id]?.action === "defend") {
         this.circle([x, y], 32, color + "99", 2, 10);
         this.circle([x, y], 35, color + "22", 1);
@@ -264,6 +330,13 @@ export class Arena {
           const p = this.point(e.to ?? e.pos);
           this.circle(p, age * 80 + 5, "#ffae77", 4, 25);
         }
+        if (e.type === "pickup") {
+          const p = this.point(e.pos);
+          this.circle(p, 12 + age * 38, "#f4d078", 2, 14);
+          c.fillStyle = "#f4d078";
+          c.font = "bold 20px monospace";
+          c.fillText(`+${e.amount} ⚡`, p[0], p[1] - 28 - age * 30);
+        }
         if (e.type === "harvest") {
           const from = this.point(e.pos),
             to = this.point(e.to);
@@ -299,6 +372,30 @@ export class Arena {
             c.strokeStyle = "#15231a";
             c.strokeRect(30 + x * 65, 30 + y * 65, 65, 65);
           }
+    // Zone beacons are public information, including beyond the fighter's fog.
+    if (s.zone) {
+      c.save();
+      c.lineWidth = 1.5;
+      c.strokeStyle = "#c1f88788";
+      for (const p of s.points.filter((p) => !this.visible(p))) {
+        const [x, y] = this.point(p);
+        c.strokeRect(x - 27, y - 27, 54, 54);
+      }
+      if (s.zone.nextPoints && s.zone.endsAt - s.turn <= 2) {
+        c.setLineDash([6, 6]);
+        c.strokeStyle = "#d5e9aaa0";
+        for (const p of s.zone.nextPoints) {
+          const [x, y] = this.point(p);
+          c.strokeRect(x - 27, y - 27, 54, 54);
+        }
+        c.setLineDash([]);
+        const p = this.point(s.zone.nextPoints[0]);
+        c.fillStyle = "#d5e9aa";
+        c.font = "bold 10px monospace";
+        c.fillText("ДАЛЕЕ", p[0] + 32.5, p[1] - 34);
+      }
+      c.restore();
+    }
     // Slow atmospheric sweep, independent of the turn rate.
     if (!this.reduced) {
       const sy = 30 + ((time * 24) % 780);

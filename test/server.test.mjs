@@ -24,6 +24,7 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
   const app = await createApp({
     dataDir: dir,
     status: { available: true, version: "fixture", model: "fixture" },
+    modelCatalog: [{ id: "fixture", name: "Fixture", efforts: ["low"], defaultReasoning: "low" }],
     provider,
   });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
@@ -126,4 +127,106 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
     await readFile(join(dir, "matches", `${cj.matches[0].id}.json`), "utf8"),
   );
   assert.equal(saved.status, "cancelled");
+});
+
+test("SSE emits model output before action completes and persists appearance and messages", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "arena-stream-test-"));
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const provider = async (o, _p, _m, { signal, onEvent }) => {
+    onEvent({ phase: "thinking", text: "Модель выбирает действие" });
+    onEvent({ phase: "summary", text: "Публичное пояснение", itemId: "s" });
+    await gate;
+    if (signal.aborted) throw new Error("Cancelled");
+    return {
+      action: "defend",
+      target: null,
+      reason: "Держу позицию",
+      memory: "",
+    };
+  };
+  const app = await createApp({
+    dataDir: dir,
+    status: { available: true, model: "fixture", version: "fixture" },
+    modelCatalog: [{ id: "fixture", name: "Fixture", efforts: ["low"], defaultReasoning: "low" }],
+    provider,
+  });
+  await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
+  const port = app.server.address().port;
+  const base = `http://127.0.0.1:${port}`;
+  const post = (path, data) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  const ac = new AbortController();
+  t.after(async () => {
+    release();
+    ac.abort();
+    app.stop();
+    await new Promise((r) => setTimeout(r, 20));
+    await rm(dir, { recursive: true, force: true });
+  });
+  const start = await (
+    await post("/api/run", {
+      mode: "codex",
+      seed: "stream",
+      prompts: ["a", "b"],
+      fighters: [
+        { name: "Искра", avatar: "drone", color: "#ff947f" },
+        { name: "Тень", avatar: "prism", color: "#70bfff" },
+      ],
+    })
+  ).json();
+  const response = await fetch(`${base}/api/jobs/${start.id}/events`, {
+    signal: ac.signal,
+  });
+  assert.ok(
+    response.headers.get("content-type").startsWith("text/event-stream"),
+  );
+  const reader = response.body.getReader();
+  let received = "";
+  while (!received.includes("Публичное пояснение"))
+    received += new TextDecoder().decode((await reader.read()).value);
+  const during = await (await fetch(`${base}/api/jobs/${start.id}`)).json();
+  assert.equal(during.matches[0].frames.length, 1);
+  assert.ok(during.trace.some((e) => e.phase === "summary"));
+  const lastSeq = during.trace.at(-1).seq;
+  const reconnect = await fetch(`${base}/api/jobs/${start.id}/events`, {
+    headers: { "Last-Event-ID": String(lastSeq) },
+    signal: ac.signal,
+  });
+  const first = new TextDecoder().decode(
+    (await reconnect.body.getReader().read()).value,
+  );
+  assert.ok(first.includes("event: status"));
+  assert.ok(
+    !/^id: /m.test(first),
+    "reconnection must not replay acknowledged events",
+  );
+  release();
+  let done;
+  for (let i = 0; i < 200; i++) {
+    done = await (await fetch(`${base}/api/jobs/${start.id}`)).json();
+    if (done.status !== "running") break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.equal(done.status, "complete");
+  const m = done.matches[0];
+  assert.equal(m.fighters[0].name, "Искра");
+  assert.equal(m.fighters[0].avatar, "drone");
+  const saved = JSON.parse(
+    await readFile(join(dir, "matches", `${m.id}.json`), "utf8"),
+  );
+  assert.ok(saved.modelEvents.some((e) => e.phase === "summary"));
+  assert.equal(
+    await (await fetch(base + "/logo.svg")).text(),
+    await readFile(new URL("../site/logo.svg", import.meta.url), "utf8"),
+  );
+  assert.equal(
+    await (await fetch(base + "/favicon.svg")).text(),
+    await readFile(new URL("../site/favicon.svg", import.meta.url), "utf8"),
+  );
+  ac.abort();
 });

@@ -15,36 +15,89 @@ import {
   codexDecision,
   codexStatus,
   DEFAULT_PROMPTS,
+  LEGACY_DEFAULT_PROMPTS,
 } from "./agents.mjs";
 
-import { normalizeFighters } from "../web/fighters.js";
+import { discoverModels, decisionTimeout } from "./codex-models.mjs";
+import { addNavigation } from "./navigation.mjs";
+
+import { normalizeFighters, AVATARS } from "../web/fighters.js";
 
 const web = fileURLToPath(new URL("../web/", import.meta.url));
 export async function createApp({
   dataDir = resolve(".arena"),
   provider = codexDecision,
   status = codexStatus(),
+  modelCatalog,
+  loadModelCatalog = discoverModels,
 } = {}) {
+  let catalogNotice = null;
+  let models = modelCatalog;
+  if (!models && status.available) {
+    try {
+      models = await loadModelCatalog();
+    } catch {
+      catalogNotice =
+        "Не удалось получить модели из Codex. Перезапустите приложение, чтобы повторить запрос.";
+    }
+  }
+  models ??= [];
+  if (status.available && !models.length)
+    catalogNotice ||=
+      "Codex не вернул доступных моделей. Перезапустите приложение, чтобы повторить запрос.";
+  const defaultModel = models.find((m) => m.id === status.model) || models[0];
+  const defaultReasoning = defaultModel?.efforts.includes("low")
+    ? "low"
+    : (defaultModel?.defaultReasoning ?? null);
+  const codexConfig = {
+    ...status,
+    model: defaultModel?.id ?? null,
+    reasoning: defaultReasoning,
+    models,
+    catalogNotice,
+  };
   const matchesDir = join(dataDir, "matches");
   await mkdir(matchesDir, { recursive: true, mode: 0o700 });
   const jobs = new Map();
   let active = null;
   function publish(job, event) {
-    const entry = {...event, seq: ++job.sequence, at: Date.now()};
+    const entry = { ...event, seq: ++job.sequence, at: Date.now() };
     job.trace.push(entry);
-    if(job.trace.length > 2000) job.trace.shift();
-    for(const client of job.clients) {
-      if(client.destroyed || !client.write(`id: ${entry.seq}\ndata: ${JSON.stringify(entry)}\n\n`)) {
-        client.destroy(); job.clients.delete(client);
+    if (job.trace.length > 2000) job.trace.shift();
+    for (const client of job.clients) {
+      if (
+        client.destroyed ||
+        !client.write(`id: ${entry.seq}\ndata: ${JSON.stringify(entry)}\n\n`)
+      ) {
+        client.destroy();
+        job.clients.delete(client);
       }
     }
     return entry;
   }
-  const publicJob = job => ({id:job.id,status:job.status,thinking:job.thinking,error:job.error,progress:job.progress,trace:job.trace,matches:job.matches});
-  const persist = async (match) => {
-    const file = join(matchesDir, `${match.id}.json`);
-    await writeFile(`${file}.tmp`, JSON.stringify(match), { mode: 0o600 });
-    await rename(`${file}.tmp`, file);
+  const publicJob = (job) => ({
+    id: job.id,
+    status: job.status,
+    thinking: job.thinking,
+    error: job.error,
+    progress: job.progress,
+    trace: job.trace,
+    matches: job.matches,
+  });
+  const writes = new Map();
+  const persist = (match) => {
+    const file = join(matchesDir, `${match.id}.json`),
+      payload = JSON.stringify(match);
+    const task = (writes.get(match.id) || Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        await writeFile(`${file}.tmp`, payload, { mode: 0o600 });
+        await rename(`${file}.tmp`, file);
+      });
+    writes.set(match.id, task);
+    return task.finally(() => {
+      if (writes.get(match.id) === task) writes.delete(match.id);
+    });
   };
   const liveMatch = (id) =>
     [...jobs.values()].some(
@@ -55,7 +108,8 @@ export async function createApp({
     created: m.created,
     mode: m.mode,
     model: m.model,
-    fighters:normalizeFighters(m.fighters),
+    reasoning: m.mode === "codex" ? (m.reasoning ?? "low") : null,
+    fighters: normalizeFighters(m.fighters),
     seed: m.seed,
     swap: m.swap,
     status:
@@ -84,19 +138,22 @@ export async function createApp({
           created: new Date().toISOString(),
           version: VERSION,
           mode: input.mode,
-          model: input.mode === "codex" ? status.model : "builtin/1",
+          model: input.mode === "codex" ? input.model : "builtin/2",
+          reasoning: input.mode === "codex" ? input.reasoning : null,
+          decisionTimeoutMs:
+            input.mode === "codex" ? decisionTimeout(input.reasoning) : null,
           cliVersion: input.mode === "codex" ? status.version : null,
           seed: round.seed,
           swap: round.swap,
           prompts: input.prompts,
-          fighters:normalizeFighters(input.fighters),
+          fighters: normalizeFighters(input.fighters),
           status: "running",
           series: input.series ? job.id : null,
           modelEvents: [],
           frames: [{ state, events: [], decisions: {}, observations: {} }],
         };
         job.matches.push(match);
-        publish(job,{type:"match_started",matchId:match.id});
+        publish(job, { type: "match_started", matchId: match.id });
         await persist(match);
         try {
           while (!state.result && !job.controller.signal.aborted) {
@@ -105,31 +162,92 @@ export async function createApp({
                 A: observe(prepared, "A"),
                 B: observe(prepared, "B"),
               };
+            const previous = match.frames.at(-1);
+            for (const id of ["A", "B"]) {
+              addNavigation(observations[id], previous.observations?.[id]);
+              const decision = previous.decisions?.[id];
+              const problem = previous.events.find(
+                (e) =>
+                  e.actor === id && ["invalid", "collision"].includes(e.type),
+              );
+              observations[id].previousAction = decision
+                ? {
+                    action: decision.action,
+                    target: decision.target,
+                    outcome: problem?.type ?? "resolved",
+                    message: problem?.text ?? null,
+                  }
+                : null;
+            }
             job.thinking = prepared.turn;
-            job.progress = {turn:prepared.turn,startedAt:Date.now(),agents:{}};
-            publish(job,{type:"turn_started",turn:prepared.turn,matchId:match.id,startedAt:job.progress.startedAt});
+            job.progress = {
+              turn: prepared.turn,
+              matchId: match.id,
+              timeoutMs: match.decisionTimeoutMs,
+              startedAt: Date.now(),
+              agents: {},
+            };
+            publish(job, {
+              type: "turn_started",
+              turn: prepared.turn,
+              matchId: match.id,
+              startedAt: job.progress.startedAt,
+            });
             const choices = await Promise.all(
               ["A", "B"].map(async (id, i) => {
                 const start = Date.now();
-                const report = event => {
-                  const entry = publish(job,{...event,type:"agent",agent:id,turn:prepared.turn,matchId:match.id});
-                  job.progress.agents[id] = {...event,startedAt:start,updatedAt:entry.at};
+                const report = (event) => {
+                  const entry = publish(job, {
+                    ...event,
+                    type: "agent",
+                    agent: id,
+                    turn: prepared.turn,
+                    matchId: match.id,
+                  });
+                  job.progress.agents[id] = {
+                    ...event,
+                    startedAt: start,
+                    updatedAt: entry.at,
+                  };
                   match.modelEvents.push(entry);
                 };
-                report({phase:"starting",text:input.mode === "codex" ? "Запускаю Codex и передаю наблюдение" : "Бот выбирает действие"});
+                report({
+                  phase: "starting",
+                  text:
+                    input.mode === "codex"
+                      ? "Запускаю Codex и передаю наблюдение"
+                      : "Бот выбирает действие",
+                });
                 let decision;
-                try { decision =
-                  input.mode === "codex"
-                    ? await provider(
-                        observations[id],
-                        input.prompts[i],
-                        memory[id],
-                        { model: status.model, signal: job.controller.signal, onEvent:report },
-                      )
-                    : botDecision(observations[id], i ? "hunt" : "control");
-                report({phase:"ready",text:decision.reason,action:decision.action,elapsedMs:Date.now()-start});
-                } catch(error) {
-                  report({phase:job.controller.signal.aborted?"cancelled":"error",text:error.message});
+                try {
+                  decision =
+                    input.mode === "codex"
+                      ? await provider(
+                          observations[id],
+                          input.prompts[i],
+                          memory[id],
+                          {
+                            model: match.model,
+                            reasoning: match.reasoning,
+                            timeout: match.decisionTimeoutMs,
+                            signal: job.controller.signal,
+                            onEvent: report,
+                          },
+                        )
+                      : botDecision(observations[id], i ? "hunt" : "control");
+                  report({
+                    phase: "ready",
+                    text: decision.reason,
+                    action: decision.action,
+                    elapsedMs: Date.now() - start,
+                  });
+                } catch (error) {
+                  report({
+                    phase: job.controller.signal.aborted
+                      ? "cancelled"
+                      : "error",
+                    text: error.message,
+                  });
                   throw error;
                 }
                 return [id, { ...decision, elapsedMs: Date.now() - start }];
@@ -142,7 +260,11 @@ export async function createApp({
             state = frame.state;
             match.frames.push({ ...frame, observations, decisions });
             job.thinking = null;
-            publish(job,{type:"frame",turn:state.turn,matchId:match.id});
+            publish(job, {
+              type: "frame",
+              turn: state.turn,
+              matchId: match.id,
+            });
             await persist(match);
             if (input.mode === "training")
               await new Promise((r) => setTimeout(r, 45));
@@ -164,7 +286,7 @@ export async function createApp({
     } finally {
       job.thinking = null;
       active = null;
-      publish(job,{type:"finished",status:job.status,error:job.error});
+      publish(job, { type: "finished", status: job.status, error: job.error });
       setTimeout(() => jobs.delete(job.id), 30 * 60 * 1000).unref();
     }
   }
@@ -201,8 +323,9 @@ export async function createApp({
         );
       if (path === "/api/config" && req.method === "GET")
         return json(res, 200, {
-          codex: status,
+          codex: codexConfig,
           prompts: DEFAULT_PROMPTS,
+          legacyPrompts: LEGACY_DEFAULT_PROMPTS,
           version: VERSION,
           active,
         });
@@ -229,6 +352,58 @@ export async function createApp({
             .sort((a, b) => b.created.localeCompare(a.created)),
         );
       }
+      const avatarMatch = path.match(
+        /^\/api\/matches\/([\da-f-]{36})\/avatar$/,
+      );
+      if (avatarMatch && req.method === "POST") {
+        if (!req.headers["content-type"]?.startsWith("application/json"))
+          return json(res, 415, { error: "Нужен JSON" });
+        req.setEncoding("utf8");
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 500)
+            return json(res, 413, { error: "Слишком большой запрос" });
+        }
+        let input;
+        try {
+          input = JSON.parse(body);
+        } catch {
+          return json(res, 400, { error: "Некорректный JSON" });
+        }
+        if (
+          !["A", "B"].includes(input?.agent) ||
+          !AVATARS.some((a) => a.id === input.avatar)
+        )
+          return json(res, 400, { error: "Неизвестный аватар" });
+        const owner = [...jobs.values()].find((j) =>
+          j.matches.some((m) => m.id === avatarMatch[1]),
+        );
+        let match = owner?.matches.find((m) => m.id === avatarMatch[1]);
+        if (!match) {
+          try {
+            match = JSON.parse(
+              await readFile(
+                join(matchesDir, `${avatarMatch[1]}.json`),
+                "utf8",
+              ),
+            );
+          } catch {
+            return json(res, 404, { error: "Матч не найден" });
+          }
+        }
+        match.fighters = normalizeFighters(match.fighters).map((f) =>
+          f.id === input.agent ? { ...f, avatar: input.avatar } : f,
+        );
+        await persist(match);
+        if (owner)
+          publish(owner, {
+            type: "appearance",
+            matchId: match.id,
+            fighters: match.fighters,
+          });
+        return json(res, 200, { fighters: match.fighters });
+      }
       const idMatch = path.match(/^\/api\/matches\/([\da-f-]{36})$/);
       if (idMatch && req.method === "GET") {
         try {
@@ -242,19 +417,37 @@ export async function createApp({
           return json(res, 404, { error: "Матч не найден" });
         }
       }
-      const jobMatch = path.match(/^\/api\/jobs\/([\da-f-]{36})(\/(?:cancel|events))?$/);
+      const jobMatch = path.match(
+        /^\/api\/jobs\/([\da-f-]{36})(\/(?:cancel|events))?$/,
+      );
       if (jobMatch) {
         const job = jobs.get(jobMatch[1]);
         if (!job) return json(res, 404, { error: "Запуск не найден" });
         if (jobMatch[2] === "/events" && req.method === "GET") {
-          res.writeHead(200,{"Content-Type":"text/event-stream; charset=utf-8","Cache-Control":"no-cache, no-transform","Connection":"keep-alive","X-Accel-Buffering":"no"});
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+            "X-Accel-Buffering": "no",
+          });
           res.flushHeaders();
-          const last=Number(req.headers["last-event-id"] || 0);
-          for(const event of job.trace) if(event.seq>last)res.write(`id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`);
-          res.write(`event: status\ndata: ${JSON.stringify({status:job.status,progress:job.progress})}\n\n`);
+          const last = Number(req.headers["last-event-id"] || 0);
+          for (const event of job.trace)
+            if (event.seq > last)
+              res.write(`id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`);
+          res.write(
+            `event: status\ndata: ${JSON.stringify({ status: job.status, progress: job.progress })}\n\n`,
+          );
           job.clients.add(res);
-          const heartbeat=setInterval(()=>res.write(": heartbeat\n\n"),10000);heartbeat.unref();
-          req.on("close",()=>{clearInterval(heartbeat);job.clients.delete(res);});
+          const heartbeat = setInterval(
+            () => res.write(": heartbeat\n\n"),
+            10000,
+          );
+          heartbeat.unref();
+          req.on("close", () => {
+            clearInterval(heartbeat);
+            job.clients.delete(res);
+          });
           return;
         }
         if (jobMatch[2] === "/cancel" && req.method === "POST") {
@@ -306,6 +499,25 @@ export async function createApp({
             error:
               "Codex недоступен. Выполните codex login и перезапустите приложение.",
           });
+        if (input.mode === "codex") {
+          if (!models.length) return json(res, 503, { error: catalogNotice });
+          const selected = models.find(
+            (m) => m.id === (input.model ?? defaultModel.id),
+          );
+          if (!selected)
+            return json(res, 400, { error: "Выберите доступную модель Codex" });
+          const reasoning =
+            input.reasoning ??
+            (selected.id === defaultModel.id
+              ? defaultReasoning
+              : selected.defaultReasoning);
+          if (!selected.efforts.includes(reasoning))
+            return json(res, 400, {
+              error: "Этот уровень reasoning недоступен для выбранной модели",
+            });
+          input.model = selected.id;
+          input.reasoning = reasoning;
+        }
         if (active)
           return json(res, 409, {
             error: "Дождитесь текущего боя или остановите его",
@@ -315,7 +527,10 @@ export async function createApp({
           status: "running",
           matches: [],
           controller: new AbortController(),
-          clients:new Set(),trace:[],sequence:0,progress:null,
+          clients: new Set(),
+          trace: [],
+          sequence: 0,
+          progress: null,
         };
         jobs.set(job.id, job);
         active = job.id;
@@ -339,7 +554,8 @@ export async function createApp({
         "/": "index.html",
         "/app.js": "app.js",
         "/arena.js": "arena.js",
-        "/fighters.js":"fighters.js",
+        "/sound.js": "sound.js",
+        "/fighters.js": "fighters.js",
         "/style.css": "style.css",
         "/favicon.svg": "../site/favicon.svg",
         "/logo.svg": "../site/logo.svg",
@@ -353,7 +569,7 @@ export async function createApp({
         svg: "image/svg+xml",
       };
       res.writeHead(200, {
-        "Cache-Control":"no-cache",
+        "Cache-Control": "no-cache",
         "Content-Type": `${mime[staticFiles[path].split(".").at(-1)]}; charset=utf-8`,
       });
       res.end(await readFile(join(web, staticFiles[path])));
@@ -369,7 +585,10 @@ export async function createApp({
   return {
     server,
     stop: () => {
-      for (const j of jobs.values()) { j.controller.abort(); for(const c of j.clients)c.end(); }
+      for (const j of jobs.values()) {
+        j.controller.abort();
+        for (const c of j.clients) c.end();
+      }
       server.close();
     },
   };

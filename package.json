@@ -11,6 +11,6 @@
     "dev": "node scripts/start.mjs --no-open",
     "test": "node --test",
     "playtest": "node scripts/gameplay-playtest.mjs",
-    "check": "node --check src/engine.mjs && node --check src/server.mjs && node --check src/agents.mjs && node --check web/app.js && node --check web/arena.js"
+    "check": "node --check src/engine.mjs && node --check src/engine-v1.mjs && node --check src/server.mjs && node --check src/agents.mjs && node --check web/app.js && node --check web/arena.js && node --check web/sound.js && node --check src/codex-models.mjs && node --check src/navigation.mjs"
   }
 }

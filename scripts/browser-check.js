@@ -2,7 +2,7 @@ async (page) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.reload();
-  await page.locator("#mode").selectOption("training");
+  await page.locator("#model").selectOption("training");
   await page.locator("#run").click();
   await page.locator("#run").waitFor({ state: "visible" });
   await page.waitForFunction(() => !document.querySelector("#run").disabled, {
@@ -28,7 +28,7 @@ async (page) => {
   await page.locator('[data-pov="A"]').click();
   if (
     !(await page
-      .locator("#fighter-stats")
+      .locator(".setup-panel")
       .innerText()
       .then((t) => t.includes("ВНЕ ОБЗОРА")))
   )

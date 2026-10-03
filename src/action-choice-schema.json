@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["choice", "reason", "memory"],
+  "properties": {
+    "choice": { "type": "integer" },
+    "reason": { "type": "string" },
+    "memory": { "type": "string" }
+  }
+}

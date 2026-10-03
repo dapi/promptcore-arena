@@ -1,18 +1,13 @@
-import * as legacy from "./engine-v1.mjs";
-
-export const VERSION = "arena/2";
-export const BATTERY_ENERGY = 4;
-export const BATTERY_PERIOD = 6;
-export const ZONE_PERIOD = 8;
+export const VERSION = "arena/1";
 export const SIZE = 12;
 export const MAX_TURNS = 40;
 export const COST = {
-  move: 0,
+  move: 1,
   scan: 2,
   attack: 3,
   trap: 3,
   defend: 1,
-  wait: 0,
+  harvest: 0,
 };
 export const key = ([x, y]) => `${x},${y}`;
 export const equal = (a, b) => a?.[0] === b?.[0] && a?.[1] === b?.[1];
@@ -53,70 +48,24 @@ function connected(walls) {
     }
   return seen.size === SIZE * SIZE - walls.size;
 }
-const zoneCells = ([x, y]) => [
-  [x, y],
-  [x + 1, y],
-  [x, y + 1],
-  [x + 1, y + 1],
-];
-function zoneRoute(seed) {
-  const rng = random(`${seed}:zones`);
-  const offset = rng() < 0.5 ? 2 : 3;
-  const direction = rng() < 0.5 ? 1 : -1;
-  const side = [5 + offset * direction, 5 - offset * direction];
-  return [[5, 5], side, [5, 5], [10 - side[0], 10 - side[1]], [5, 5]].map(
-    zoneCells,
-  );
-}
-function setZone(s) {
-  const route = zoneRoute(s.seed);
-  const index = Math.floor(Math.max(0, s.turn - 1) / ZONE_PERIOD);
-  s.points = route[index];
-  s.zone = {
-    index,
-    endsAt: (index + 1) * ZONE_PERIOD,
-    nextPoints: route[index + 1] ?? null,
-  };
-}
-function batteryWave(s) {
-  const wave = Math.floor(Math.max(0, s.turn - 1) / BATTERY_PERIOD);
-  const rng = random(`${s.seed}:batteries:${wave}`);
-  const blocked = new Set(
-    [
-      ...s.walls,
-      ...s.points,
-      ...s.traps.map((t) => t.pos),
-      ...s.agents.filter((a) => a.hp > 0).map((a) => a.pos),
-    ].map(key),
-  );
-  const candidates = [];
-  for (let y = 1; y < SIZE - 1; y++)
-    for (let x = 1; x < SIZE - 1; x++) {
-      const p = [x, y],
-        q = mirror(p);
-      if (
-        y * SIZE + x >= q[1] * SIZE + q[0] ||
-        blocked.has(key(p)) ||
-        blocked.has(key(q))
-      )
-        continue;
-      candidates.push(p);
-    }
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-  }
-  return candidates
-    .slice(0, 4)
-    .flatMap((p) => [p, mirror(p)])
-    .map((pos) => ({ pos, amount: BATTERY_ENERGY }));
-}
 export function createState(seed = "arena-01", swap = false) {
-  seed = String(seed);
-  const rng = random(seed);
+  const rng = random(seed),
+    points = [
+      [5, 5],
+      [6, 5],
+      [5, 6],
+      [6, 6],
+    ];
+  const sources = [
+    [2, 2],
+    [4, 3],
+    [3, 6],
+    [2, 8],
+  ].flatMap((p) => [p, mirror(p)]);
   const reserved = new Set(
     [
-      ...zoneRoute(seed).flat(),
+      ...points,
+      ...sources,
       [1, 1],
       [10, 10],
       ...neighbors([1, 1]),
@@ -125,7 +74,7 @@ export function createState(seed = "arena-01", swap = false) {
   );
   const walls = new Set();
   for (let tries = 0; tries < 200 && walls.size < 24; tries++) {
-    const p = [Math.floor(rng() * SIZE), Math.floor(rng() * SIZE)],
+    const p = [Math.floor(rng() * 12), Math.floor(rng() * 12)],
       q = mirror(p);
     if (reserved.has(key(p)) || reserved.has(key(q)) || walls.has(key(p)))
       continue;
@@ -136,37 +85,32 @@ export function createState(seed = "arena-01", swap = false) {
       walls.delete(key(q));
     }
   }
-  const s = {
+  return {
     version: VERSION,
-    seed,
+    seed: String(seed),
     turn: 0,
     walls: [...walls].map((k) => k.split(",").map(Number)),
-    points: [],
-    batteries: [],
+    points,
+    sources: sources.map((pos) => ({ pos, amount: 12 })),
     traps: [],
     result: null,
     agents: ["A", "B"].map((id, i) => ({
       id,
       pos: i === Number(swap) ? [1, 1] : [10, 10],
       hp: 10,
-      energy: 6,
+      energy: 10,
       control: 0,
       harvested: 0,
       scanUntil: 0,
     })),
   };
-  setZone(s);
-  s.batteries = batteryWave(s);
-  return s;
 }
 export function prepareTurn(previous) {
-  if (previous.version === "arena/1") return legacy.prepareTurn(previous);
   if (previous.result) throw new Error("Матч завершён");
   const s = structuredClone(previous);
   s.turn++;
-  setZone(s);
-  if (s.turn > 1 && (s.turn - 1) % BATTERY_PERIOD === 0)
-    s.batteries = batteryWave(s);
+  for (const a of s.agents)
+    if (a.hp > 0 && s.turn > 1) a.energy = Math.min(12, a.energy + 1);
   return s;
 }
 export function visibility(s, id) {
@@ -179,29 +123,18 @@ export function visibility(s, id) {
   return cells;
 }
 export function observe(s, id) {
-  if (s.version === "arena/1") return legacy.observe(s, id);
   const a = s.agents.find((a) => a.id === id),
     cells = visibility(s, id),
     visible = new Set(cells.map(key));
   return {
-    version: VERSION,
     turn: s.turn,
     maxTurns: MAX_TURNS,
     size: SIZE,
     self: structuredClone(a),
-    legalActions: legalActions(s, a),
     visible: cells,
     walls: s.walls.filter((p) => visible.has(key(p))),
     points: s.points,
-    zone: {
-      endsAt: s.zone.endsAt,
-      nextPoints: s.zone.endsAt - s.turn < 2 ? s.zone.nextPoints : null,
-    },
-    batteries: s.batteries.filter((v) => visible.has(key(v.pos))),
-    nextBatteryWave:
-      (Math.floor(Math.max(0, s.turn - 1) / BATTERY_PERIOD) + 1) *
-        BATTERY_PERIOD +
-      1,
+    sources: s.sources.filter((v) => visible.has(key(v.pos))),
     traps: s.traps.filter(
       (t) =>
         visible.has(key(t.pos)) &&
@@ -231,10 +164,12 @@ export function clearShot(s, from, to) {
   }
 }
 export function validate(s, a, d) {
-  if (s.version === "arena/1") return legacy.validate(s, a, d);
   if (!d || !Object.hasOwn(COST, d.action)) return "Неизвестное действие";
   if (a.energy < COST[d.action]) return "Недостаточно энергии";
-  if (["move", "attack", "trap"].includes(d.action) && !inBounds(d.target))
+  if (
+    ["move", "attack", "trap", "harvest"].includes(d.action) &&
+    !inBounds(d.target)
+  )
     return "Неверные координаты";
   const t = d.target;
   if (
@@ -249,50 +184,28 @@ export function validate(s, a, d) {
     (distance(a.pos, t) !== 1 ||
       s.walls.some((w) => equal(w, t)) ||
       s.points.some((p) => equal(p, t)) ||
-      s.batteries.some((v) => equal(v.pos, t)) ||
+      s.sources.some((v) => equal(v.pos, t)) ||
       s.agents.some((b) => b.hp > 0 && equal(b.pos, t)) ||
       s.traps.some((v) => equal(v.pos, t)) ||
       s.traps.filter((v) => v.owner === a.id).length >= 2)
   )
     return "Нельзя установить ловушку";
+  if (
+    d.action === "harvest" &&
+    (distance(a.pos, t) > 1 ||
+      !s.sources.some((v) => equal(v.pos, t) && v.amount > 0) ||
+      a.energy >= 12)
+  )
+    return "Источник недоступен или энергия полная";
   return null;
 }
-export function legalActions(s, a) {
-  const candidates = ["wait", "defend", "scan"].map((action) => ({
-    action,
-    target: null,
-  }));
-  for (const target of neighbors(a.pos))
-    for (const action of ["move", "trap"]) candidates.push({ action, target });
-  for (let step = 1; step <= 3; step++)
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ]) {
-      const target = [a.pos[0] + dx * step, a.pos[1] + dy * step];
-      if (inBounds(target)) candidates.push({ action: "attack", target });
-    }
-  return candidates
-    .filter((d) => !validate(s, a, d))
-    .map((d, choice) => ({ choice, ...d }));
-}
 export function resolveTurn(prepared, decisions) {
-  if (prepared.version === "arena/1")
-    return legacy.resolveTurn(prepared, decisions);
   const s = structuredClone(prepared),
     events = [],
     valid = {},
     defending = new Set();
   const event = (type, actor, text, data = {}) =>
     events.push({ type, actor, text, ...data });
-  if (s.turn > 1 && (s.turn - 1) % ZONE_PERIOD === 0)
-    event("zone_shift", null, "Зона контроля переместилась", {
-      points: s.points,
-    });
-  if (s.turn > 1 && (s.turn - 1) % BATTERY_PERIOD === 0)
-    event("battery_wave", null, "Появились новые батарейки");
   for (const a of s.agents.filter((a) => a.hp > 0)) {
     const d = decisions[a.id],
       error = validate(prepared, a, d);
@@ -386,35 +299,33 @@ export function resolveTurn(prepared, decisions) {
       }
     }
   }
-  // Only a successful entry collects a battery; collisions and waiting do not.
-  for (const a of s.agents.filter((a) => a.hp > 0)) {
-    const moved = events.some((e) => e.type === "move" && e.actor === a.id);
-    const battery = moved && s.batteries.find((b) => equal(b.pos, a.pos));
-    if (!battery) continue;
-    const amount = Math.min(battery.amount, 12 - a.energy);
-    a.energy += amount;
-    a.harvested += amount;
-    s.batteries = s.batteries.filter((b) => b !== battery);
-    event(
-      "pickup",
-      a.id,
-      amount
-        ? `${a.id}: батарейка +${amount} энергии`
-        : `${a.id}: батарейка подобрана, запас полон`,
-      { pos: a.pos, to: a.pos, amount },
+  for (const source of s.sources) {
+    const takers = s.agents.filter(
+      (a) =>
+        a.hp > 0 &&
+        valid[a.id]?.action === "harvest" &&
+        equal(valid[a.id].target, source.pos),
     );
+    const share = takers.length
+      ? Math.min(4, Math.floor(source.amount / takers.length))
+      : 0;
+    for (const a of takers) {
+      const amount = Math.min(share, 12 - a.energy);
+      a.energy += amount;
+      a.harvested += amount;
+      source.amount -= amount;
+      event("harvest", a.id, `${a.id}: +${amount} энергии`, {
+        pos: source.pos,
+        to: a.pos,
+        amount,
+      });
+    }
+    source.amount = Math.min(12, source.amount + 1);
   }
-  const occupants = s.agents.filter(
-    (a) => a.hp > 0 && s.points.some((p) => equal(p, a.pos)),
-  );
-  if (occupants.length > 1)
-    event("contested", null, "Зона оспаривается — очки не начислены", {
-      points: s.points,
-    });
   for (const a of s.agents) {
-    if (occupants.length === 1 && occupants[0].id === a.id) {
+    if (a.hp > 0 && s.points.some((p) => equal(p, a.pos))) {
       a.control++;
-      event("control", a.id, `${a.id} контролирует зону · ${a.control}`, {
+      event("control", a.id, `${a.id} удерживает ядро · ${a.control}`, {
         pos: a.pos,
       });
     }

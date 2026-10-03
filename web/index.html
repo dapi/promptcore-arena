@@ -21,42 +21,71 @@
           История боёв <span id="archive-count">0</span></button
         ><button class="tab" data-tab="rules">Правила</button>
       </nav>
-      <div class="local-status"><i></i> Локальный запуск</div>
     </header>
     <main>
       <section id="arena-tab" class="tab-page">
-        <div class="page-heading">
-          <div class="game-intro">
-            <h1>Объяснение игры для ребёнка</h1>
-            <p>Модель у бойцов одинаковая, но каждый игрок задаёт ей свой промпт со стратегией. Потом бойцы одновременно выбирают ходы и сражаются, а мы смотрим, чья стратегия сработала лучше.</p>
-          </div>
-          <div class="session-tag">
-            <span class="tiny">ПОЛИГОН 01</span
-            ><strong>12 × 12 <span>/</span> 40 ходов</strong>
-          </div>
-        </div>
+        <h1 class="sr-only">Арена</h1>
         <p id="app-message" role="status" class="app-message"></p>
-        <section id="run-progress" class="run-progress" aria-label="Ход расчёта матча" hidden>
+        <section
+          id="run-progress"
+          class="run-progress"
+          aria-label="Ход расчёта матча"
+          hidden
+        >
           <span class="progress-spinner" aria-hidden="true"></span>
-          <div class="run-progress-copy"><strong id="progress-title" role="status">Запускаю бой…</strong><span id="progress-detail">Передаю стратегии бойцам</span></div>
-          <div class="run-progress-counter"><span id="progress-count">0 / 40 ходов</span><progress id="battle-progress" max="40" value="0" aria-label="Рассчитанные ходы"></progress></div>
+          <div class="run-progress-copy">
+            <strong id="progress-title" role="status">Запускаю бой…</strong
+            ><span id="progress-detail">Передаю стратегии бойцам</span>
+          </div>
+          <div class="run-progress-counter">
+            <span id="progress-count">0 / 40 ходов</span
+            ><progress
+              id="battle-progress"
+              max="40"
+              value="0"
+              aria-label="Рассчитанные ходы"
+            ></progress>
+          </div>
           <strong id="progress-clock" class="progress-clock">00:00</strong>
         </section>
         <div class="workspace">
           <aside class="setup-panel">
-            <div class="section-label">
-              <span>01 / БОЙЦЫ</span><span class="tiny">2 АГЕНТА</span>
-            </div>
             <div class="fighter-editor fighter-a">
               <div class="fighter-heading">
-                <img class="avatar" id="avatar-image-a" alt="Аватар бойца A" width="44" height="44" />
+                <button
+                  type="button"
+                  class="avatar-button"
+                  data-avatar="a"
+                  aria-label="Сменить аватар бойца A"
+                  title="Нажми, чтобы сменить аватар"
+                >
+                  <img
+                    class="avatar"
+                    id="avatar-image-a"
+                    alt="Аватар бойца A"
+                    width="44"
+                    height="44"
+                  />
+                </button>
                 <div>
-                  <label class="sr-only" for="fighter-name-a">Имя бойца A</label><input id="fighter-name-a" class="fighter-name" value="Вектор" maxlength="24" aria-label="Имя бойца A" />
-                  <span class="tiny">КОНТРОЛЬ ТЕРРИТОРИИ</span>
+                  <label class="sr-only" for="fighter-name-a">Имя бойца A</label
+                  ><input
+                    id="fighter-name-a"
+                    class="fighter-name"
+                    value="Вектор"
+                    maxlength="24"
+                    aria-label="Имя бойца A"
+                  />
+                  <span class="tiny" id="fighter-action-a">БОЕЦ A · ГОТОВ</span>
                 </div>
                 <span class="fighter-dot"></span>
               </div>
-              <label for="prompt-a">Стратегия бойца</label
+              <div
+                id="fighter-status-a"
+                class="fighter-status"
+                aria-label="Показатели бойца A"
+              ></div>
+              <label for="prompt-a">Стратегия</label
               ><textarea
                 id="prompt-a"
                 maxlength="6000"
@@ -64,20 +93,55 @@
               ></textarea>
               <div class="editor-foot">
                 <button type="button" class="text-button" data-reset="0">
-                  Сбросить</button
-                ><span>ПРОМПТ / A</span>
+                  Сбросить
+                </button>
+                <button
+                  type="button"
+                  class="text-button"
+                  data-edit-prompt="a"
+                  hidden
+                >
+                  Изменить для нового боя
+                </button>
+                <span data-prompt-state="a"></span>
               </div>
             </div>
             <div class="fighter-editor fighter-b">
               <div class="fighter-heading">
-                <img class="avatar" id="avatar-image-b" alt="Аватар бойца B" width="44" height="44" />
+                <button
+                  type="button"
+                  class="avatar-button"
+                  data-avatar="b"
+                  aria-label="Сменить аватар бойца B"
+                  title="Нажми, чтобы сменить аватар"
+                >
+                  <img
+                    class="avatar"
+                    id="avatar-image-b"
+                    alt="Аватар бойца B"
+                    width="44"
+                    height="44"
+                  />
+                </button>
                 <div>
-                  <label class="sr-only" for="fighter-name-b">Имя бойца B</label><input id="fighter-name-b" class="fighter-name" value="Фантом" maxlength="24" aria-label="Имя бойца B" />
-                  <span class="tiny">АГРЕССИВНАЯ ТАКТИКА</span>
+                  <label class="sr-only" for="fighter-name-b">Имя бойца B</label
+                  ><input
+                    id="fighter-name-b"
+                    class="fighter-name"
+                    value="Фантом"
+                    maxlength="24"
+                    aria-label="Имя бойца B"
+                  />
+                  <span class="tiny" id="fighter-action-b">БОЕЦ B · ГОТОВ</span>
                 </div>
                 <span class="fighter-dot"></span>
               </div>
-              <label for="prompt-b">Стратегия бойца</label
+              <div
+                id="fighter-status-b"
+                class="fighter-status"
+                aria-label="Показатели бойца B"
+              ></div>
+              <label for="prompt-b">Стратегия</label
               ><textarea
                 id="prompt-b"
                 maxlength="6000"
@@ -85,43 +149,46 @@
               ></textarea>
               <div class="editor-foot">
                 <button type="button" class="text-button" data-reset="1">
-                  Сбросить</button
-                ><span>ПРОМПТ / B</span>
+                  Сбросить
+                </button>
+                <button
+                  type="button"
+                  class="text-button"
+                  data-edit-prompt="b"
+                  hidden
+                >
+                  Изменить для нового боя
+                </button>
+                <span data-prompt-state="b"></span>
               </div>
             </div>
             <div class="match-settings">
-              <label for="mode">Управление бойцами</label
-              ><select id="mode">
-                <option value="codex">Codex · промпты управляют боем</option>
-                <option value="training">Тренировка · встроенные боты</option>
-              </select>
-              <p id="mode-note" class="field-note"></p>
-              <div class="seed-row">
-                <div>
-                  <label for="seed">Карта / seed</label
-                  ><input id="seed" value="sector-07" maxlength="80" required />
-                </div>
-                <button
-                  id="random-seed"
-                  class="icon-button"
-                  aria-label="Новая случайная карта"
-                  title="Новая карта"
-                >
-                  ⤨
-                </button>
+              <div class="model-settings">
+                <label for="model"
+                  >Модель<select
+                    id="model"
+                    aria-label="Модель для обоих бойцов"
+                  ></select
+                ></label>
+                <label for="reasoning"
+                  >Reasoning<select
+                    id="reasoning"
+                    aria-label="Уровень reasoning для обоих бойцов"
+                    title="Больше усилий на выбор действия; ответ может занять дольше"
+                  ></select
+                ></label>
               </div>
-              <label class="swap-label"
-                ><input type="checkbox" id="swap" /> Поменять стартовые
-                позиции</label
-              >
+              <p id="mode-note" class="field-note"></p>
             </div>
-            <button id="run" class="primary">
-              <span>Запустить бой</span><span>↗</span></button
-            ><button id="series" class="secondary">
-              Сравнить стратегии <span>4 боя</span></button
-            ><button id="cancel" class="danger" hidden>
-              Остановить запуск
-            </button>
+            <div class="launch-controls">
+              <button id="run" class="primary">
+                <span>Запустить бой</span><span>↗</span></button
+              ><button id="series" class="secondary">
+                Серия <span>4 боя</span></button
+              ><button id="cancel" class="danger" hidden>
+                Остановить запуск
+              </button>
+            </div>
           </aside>
           <section
             class="arena-panel"
@@ -133,41 +200,82 @@
                 <span class="status-dot" id="battle-dot"></span
                 ><strong id="battle-status">Арена готова</strong>
               </div>
-              <span class="tiny" id="seed-label">SECTOR-07</span>
+              <details class="map-settings">
+                <summary title="Настроить карту и стартовые позиции">
+                  <span>Карта</span>
+                  <span id="seed-label">sector-07</span>
+                  <span class="map-chevron" aria-hidden="true">⌄</span>
+                </summary>
+                <div class="map-popover">
+                  <div class="seed-row">
+                    <div>
+                      <label for="seed">Код карты</label>
+                      <input
+                        id="seed"
+                        value="sector-07"
+                        maxlength="80"
+                        required
+                      />
+                    </div>
+                    <button
+                      id="random-seed"
+                      class="icon-button"
+                      aria-label="Новая случайная карта"
+                      title="Новая случайная карта"
+                    >
+                      ⤨
+                    </button>
+                  </div>
+                  <label class="swap-label">
+                    <input type="checkbox" id="swap" /> Поменять стартовые
+                    позиции
+                  </label>
+                  <p class="map-lock-note" hidden>
+                    Карту можно изменить после боя.
+                  </p>
+                </div>
+              </details>
             </div>
             <div class="arena-meta">
               <span id="mode-label">ПРЕДПРОСМОТР КАРТЫ</span
+              ><span id="zone-status" hidden></span
               ><span
                 >ХОД <b id="turn-label">00</b
                 ><span class="dim"> / 40</span></span
               >
             </div>
-            <div class="canvas-wrap">
-              <canvas
-                id="battlefield"
-                width="840"
-                height="840"
-                role="img"
-                aria-label="Арена 12 на 12 клеток. Запустите бой."
-              ></canvas>
-              <div class="board-corner tl"></div>
-              <div class="board-corner tr"></div>
-              <div class="board-corner bl"></div>
-              <div class="board-corner br"></div>
-              <div class="board-overlay" id="board-overlay">
-                <span>СИСТЕМЫ ГОТОВЫ</span
-                ><strong>Один промпт меняет всё.</strong
-                ><small>Задай стратегию и отправь бойцов на арену</small>
+            <div class="board-stage">
+              <div class="canvas-wrap">
+                <canvas
+                  id="battlefield"
+                  width="840"
+                  height="840"
+                  role="img"
+                  aria-label="Арена 12 на 12 клеток. Запустите бой."
+                ></canvas>
+                <div class="board-corner tl"></div>
+                <div class="board-corner tr"></div>
+                <div class="board-corner bl"></div>
+                <div class="board-corner br"></div>
+                <div class="board-overlay" id="board-overlay">
+                  <span>СИСТЕМЫ ГОТОВЫ</span
+                  ><strong>Один промпт меняет всё.</strong
+                  ><small>Задай стратегию и отправь бойцов на арену</small>
+                </div>
+                <div id="result-banner" class="result-banner" hidden></div>
               </div>
-              <div id="result-banner" class="result-banner" hidden></div>
             </div>
             <div class="legend">
-              <span><i class="legend-core"></i> Ядро</span
-              ><span><i class="legend-energy"></i> Энергия</span
+              <span
+                ><i class="legend-core"></i>
+                <span id="legend-core">Зона</span></span
+              ><span
+                ><i class="legend-energy"></i>
+                <span id="legend-energy">Батарейка +4</span></span
               ><span><i class="legend-wall"></i> Препятствие</span
               ><span><i class="legend-trap"></i> Ловушка</span>
             </div>
-            <div class="playback">
+            <div class="playback" hidden>
               <div class="play-buttons">
                 <button
                   id="prev"
@@ -178,7 +286,8 @@
                 ><button
                   id="play"
                   class="play-button"
-                  aria-label="Воспроизвести повтор"
+                  aria-label="Продолжить просмотр"
+                  title="Воспроизвести повтор"
                 >
                   ▶</button
                 ><button
@@ -208,11 +317,47 @@
             <div class="arena-bottom">
               <div class="pov-control">
                 <span class="tiny">ОБЗОР</span
-                ><button class="selected" data-pov="all">Вся арена</button
-                ><button data-pov="A">A</button><button data-pov="B">B</button>
+                ><button
+                  class="selected"
+                  data-pov="all"
+                  title="Показать всю карту"
+                >
+                  Вся арена</button
+                ><button
+                  data-pov="A"
+                  title="Показать только то, что видит боец A"
+                >
+                  A</button
+                ><button
+                  data-pov="B"
+                  title="Показать только то, что видит боец B"
+                >
+                  B
+                </button>
               </div>
               <button id="live" class="text-button" hidden>
-                К текущему ходу ↗</button
+                К текущему ходу</button
+              ><button
+                id="sound-toggle"
+                class="sound-toggle"
+                type="button"
+                aria-label="Выключить звук"
+                aria-pressed="true"
+                title="Выключить звук"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <path d="M3 9h4l5-4v14l-5-4H3z" />
+                  <path
+                    class="sound-waves"
+                    d="M16 8c3 2 3 6 0 8m3-11c5 4 5 10 0 14"
+                  />
+                  <path class="sound-off" d="m16 9 6 6m0-6-6 6" />
+                </svg></button
               ><button id="download" class="text-button" disabled>
                 Скачать повтор ↓
               </button>
@@ -220,44 +365,81 @@
             <div id="series-results" class="series-results" hidden></div>
           </section>
           <aside class="telemetry-panel">
-            <div class="section-label">
-              <span>02 / ТЕЛЕМЕТРИЯ</span
-              ><span class="tiny" id="live-badge">ОЖИДАНИЕ</span>
-            </div>
-            <section id="model-monitor" class="model-monitor" aria-label="Поток сообщений Codex" hidden>
-            <div class="monitor-title"><h2>Сейчас в Codex</h2><span id="stream-status">Подключение…</span></div>
-            <p class="monitor-note">Пояснения появятся, если Codex их отправит. Итоговое действие видно в ответе модели.</p>
-            <div id="model-agents"></div>
-          </section>
-          <div id="fighter-stats"></div>
-            <div class="feed-header">
-              <h2>Хроника боя</h2>
-              <span id="event-count" class="tiny">0 СОБЫТИЙ</span>
-            </div>
             <div
-              id="event-feed"
-              class="event-feed"
-              aria-label="События текущего хода"
+              class="telemetry-tabs"
+              role="tablist"
+              aria-label="Подробности боя"
             >
-              <div class="empty-feed">
-                <span>⌁</span>
-                <p>Пока тихо.</p>
-                <small
-                  >Здесь появятся выстрелы, захваты и решения бойцов.</small
-                >
-              </div>
+              <button
+                id="messages-tab"
+                type="button"
+                role="tab"
+                aria-controls="model-monitor"
+                aria-selected="true"
+                data-telemetry="messages"
+              >
+                Сообщения
+              </button>
+              <button
+                id="chronicle-tab"
+                type="button"
+                role="tab"
+                aria-controls="chronicle-panel"
+                aria-selected="false"
+                data-telemetry="chronicle"
+              >
+                Хроника
+              </button>
+              <span class="tiny" id="live-badge">ОЖИДАНИЕ</span>
             </div>
-            <div class="intent-panel">
-              <span class="section-label">НАМЕРЕНИЯ АГЕНТОВ</span>
-              <div id="intent-a" class="intent fighter-a">
-                <b>A</b>
-                <p>Жду сигнала к старту.</p>
+            <section
+              id="model-monitor"
+              class="model-monitor"
+              role="tabpanel"
+              aria-labelledby="messages-tab"
+              hidden
+            >
+              <div class="monitor-title">
+                <h2 class="sr-only">Сейчас в Codex</h2>
+                <span id="stream-status">Подключение…</span>
               </div>
-              <div id="intent-b" class="intent fighter-b">
-                <b>B</b>
-                <p>Готов к первому ходу.</p>
+              <div id="model-agents"></div>
+            </section>
+            <section
+              id="chronicle-panel"
+              class="chronicle-panel"
+              role="tabpanel"
+              aria-labelledby="chronicle-tab"
+            >
+              <div class="feed-header">
+                <h2>Хроника боя</h2>
+                <span id="event-count" class="tiny">0 СОБЫТИЙ</span>
               </div>
-            </div>
+              <div
+                id="event-feed"
+                class="event-feed"
+                aria-label="События текущего хода"
+              >
+                <div class="empty-feed">
+                  <span>⌁</span>
+                  <p>Пока тихо.</p>
+                  <small
+                    >Здесь появятся выстрелы, захваты и решения бойцов.</small
+                  >
+                </div>
+              </div>
+              <div class="intent-panel">
+                <span class="section-label">НАМЕРЕНИЯ АГЕНТОВ</span>
+                <div id="intent-a" class="intent fighter-a">
+                  <b>A</b>
+                  <p>Жду сигнала к старту.</p>
+                </div>
+                <div id="intent-b" class="intent fighter-b">
+                  <b>B</b>
+                  <p>Готов к первому ходу.</p>
+                </div>
+              </div>
+            </section>
           </aside>
         </div>
 
@@ -280,29 +462,43 @@
       <section id="rules-tab" class="tab-page" hidden>
         <div class="page-heading">
           <div>
-            <div class="eyebrow">ARENA / 1</div>
+            <div class="eyebrow">ARENA / 2</div>
             <h1>Правила <span>арены.</span></h1>
           </div>
         </div>
         <div class="rules-layout">
           <article>
+            <h2>Как это работает</h2>
+            <p>
+              Модель у бойцов одинаковая, но каждый игрок задаёт ей свой промпт
+              со стратегией. Потом бойцы одновременно выбирают ходы и сражаются,
+              а мы смотрим, чья стратегия сработала лучше.
+            </p>
             <h2>Одинаковые условия.</h2>
             <p>
-              Два бойца, 10 здоровья и 10 энергии на старте. На симметричной
+              Два бойца, 10 здоровья и 6 энергии на старте. На симметричной
               карте 12 × 12 они одновременно выбирают по одному действию за ход.
               Всего 40 ходов.
             </p>
             <p>
-              Со второго хода каждый восстанавливает 1 энергию, максимум — 12.
-              Обзор ограничен радиусом 3. Сканирование увеличивает его до 6 на
-              два следующих хода.
+              Движение бесплатное. Энергия не восстанавливается сама; максимум —
+              12. Обзор ограничен радиусом 3. Сканирование увеличивает его до 6
+              на два следующих хода.
             </p>
-            <h2>Захвати ядро. Или выживи.</h2>
+            <h2>Перехватывай зоны. Или победи в бою.</h2>
             <p>
-              Четыре центральные клетки дают по одному очку контроля за каждый
-              ход на них. Последний выживший побеждает сразу. На 40-м ходу
-              сравниваются контроль, здоровье, собранная энергия. При равенстве
-              — ничья.
+              Зона из четырёх клеток перемещается каждые 8 ходов. Следующее
+              место видно за 2 хода. Единственный боец внутри получает 1 очко за
+              ход; если внутри оба — очков нет. Последний выживший побеждает
+              сразу. На 40-м ходу сравниваются контроль, здоровье, собранная
+              энергия. При равенстве — ничья.
+            </p>
+            <h2>Подбирай батарейки.</h2>
+            <p>
+              Вход на батарейку даёт до 4 энергии, затем она исчезает. При
+              полном запасе прибавки нет, но батарейка тоже пропадает. Каждые 6
+              ходов появляется новая волна. Подбор происходит автоматически —
+              отдельный ход не нужен.
             </p>
             <h2>У каждого своя картина.</h2>
             <p>
@@ -317,7 +513,7 @@
           </article>
           <div class="action-rules">
             <div>
-              <b>↗ Перемещение <em>1 ⚡</em></b>
+              <b>↗ Перемещение <em>0 ⚡</em></b>
               <p>
                 Одна соседняя клетка. В столкновении оба остаются на месте;
                 обмен позициями разрешён.
@@ -346,8 +542,10 @@
               <p>Уменьшает каждое попадание на 2 в текущем ходу.</p>
             </div>
             <div>
-              <b>ϟ Сбор <em>0 ⚡</em></b>
-              <p>До 4 энергии из источника на своей или соседней клетке.</p>
+              <b>◷ Ожидание <em>0 ⚡</em></b>
+              <p>
+                Остаться на месте. Не восстанавливает энергию и не даёт щит.
+              </p>
             </div>
           </div>
         </div>

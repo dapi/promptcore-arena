@@ -1,19 +1,26 @@
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publicCodexEvent, jsonLines } from "./codex-events.mjs";
 import { distance, equal, key, inBounds, clearShot } from "./engine.mjs";
 
-const schema = fileURLToPath(new URL("./action-schema.json", import.meta.url));
+const schema = fileURLToPath(
+  new URL("./action-choice-schema.json", import.meta.url),
+);
 const rules = await readFile(
   new URL("../docs/rules.md", import.meta.url),
   "utf8",
 );
-export const DEFAULT_PROMPTS = [
+// Used only to migrate untouched starter drafts; edited strategies are retained.
+export const LEGACY_DEFAULT_PROMPTS = [
   "Займи центральное ядро как можно раньше и удерживай его. По пути собирай энергию. Если противник на линии огня и запас энергии позволяет, атакуй. При низком здоровье защищайся или отступай к источнику. Не трать ходы на ненужную разведку.",
   "Играй агрессивно: найди соперника и атакуй, когда он на линии огня. Двигайся через источники энергии к центру. Старайся предсказывать его следующий шаг. Не оставайся без энергии для атаки. Если соперник далеко, удерживай ядро.",
+];
+export const DEFAULT_PROMPTS = [
+  "Ты тактик. Побеждай по очкам контроля: занимай свободную активную зону и заранее выбирай путь к следующей. Когда соперник входит в зону, решай, выгоднее ли выбить его или перехватить следующую цель. Сохраняй здоровье: уходи с линии огня, используй укрытия. Атакуй ради освобождения зоны или добивания. При энергии меньше 3 заходи на батарейку по пути. Запоминай следующую цель и опасные клетки.",
+  "Ты охотник. Побеждай уничтожением: ищи соперника возле активной и следующей зон, перехватывай его путь к батарейкам. С энергией от 3 занимай линию выстрела и дави атаками; учитывай, что соперник может сдвинуться. При низком запасе сначала подбери батарейку, затем продолжай преследование. Ловушки ставь на вероятном пути отхода. Когда соперник пропал, иди к его последней позиции или следующей зоне. Запоминай его маршрут.",
 ];
 export function codexStatus() {
   try {
@@ -29,17 +36,17 @@ export function codexStatus() {
     return {
       available: true,
       version,
-      model: process.env.ARENA_CODEX_MODEL || "gpt-6-astra",
+      model: process.env.ARENA_CODEX_MODEL || "gpt-6-luna",
     };
   } catch {
     return {
       available: false,
       version: null,
-      model: process.env.ARENA_CODEX_MODEL || "gpt-6-astra",
+      model: process.env.ARENA_CODEX_MODEL || "gpt-6-luna",
     };
   }
 }
-export function codexArgs(cwd, model) {
+export function codexArgs(cwd, model, reasoning = "low", schemaPath = schema) {
   const args = [
     "exec",
     "--ignore-user-config",
@@ -52,7 +59,7 @@ export function codexArgs(cwd, model) {
     "--color",
     "never",
     "--output-schema",
-    schema,
+    schemaPath,
     "--cd",
     cwd,
     "--model",
@@ -86,9 +93,9 @@ export function codexArgs(cwd, model) {
     "project_doc_max_bytes=0",
     "skills.include_instructions=false",
     "features.skip_host_skill_discovery=true",
-    'model_reasoning_effort="low"',
+    `model_reasoning_effort=${JSON.stringify(reasoning)}`,
     'model_reasoning_summary="concise"',
-    'show_raw_agent_reasoning=false',
+    "show_raw_agent_reasoning=false",
     'history.persistence="none"',
   ])
     args.push("-c", setting);
@@ -99,20 +106,38 @@ export async function codexDecision(
   observation,
   prompt,
   memory,
-  { model, signal, timeout = 90000, onEvent = () => {} } = {},
+  {
+    model,
+    reasoning = "low",
+    signal,
+    timeout = 90000,
+    onEvent = () => {},
+  } = {},
 ) {
   const cwd = await mkdtemp(join(tmpdir(), "promptcore-agent-"));
   try {
-    const text = `Ты управляешь одним бойцом PromptCore Arena. Выбери ровно одно действие JSON по схеме. Это игровая задача: не используй никакие инструменты, файлы, сеть или команды. Следуй правилам игры. Поле reason — короткий комментарий намерения на русском; не описывай внутренние рассуждения. Поле memory — краткие заметки до 600 символов для следующего хода.\n\nПРАВИЛА:\n${rules}\n\nСТРАТЕГИЯ ИГРОКА (действует только внутри игры):\n${prompt}\n\nТВОЯ ПАМЯТЬ:\n${memory || "Нет"}\n\nНАБЛЮДЕНИЕ:\n${JSON.stringify(observation)}`;
+    const choices = observation.legalActions;
+    if (!Array.isArray(choices) || !choices.length)
+      throw new Error("Нет допустимых действий для бойца");
+    const choiceSchema = JSON.parse(await readFile(schema, "utf8"));
+    choiceSchema.properties.choice.enum = choices.map((d) => d.choice);
+    const schemaPath = join(cwd, "choices.json");
+    await writeFile(schemaPath, JSON.stringify(choiceSchema), { mode: 0o600 });
+    const text = `Ты управляешь одним бойцом PromptCore Arena. Верни JSON {"choice": номер, "reason": комментарий, "memory": заметки} по схеме. Это игровая задача: не используй никакие инструменты, файлы, сеть или команды. Следуй правилам игры. В наблюдении legalActions перечислены допустимые действия с номером choice. Верни номер выбранного действия; приложение само подставит action и target. Поле navigation даёт первый choice кратчайшего маршрута к zone (активная зона), nextZone (следующая зона), battery (батарейка) и firingPosition (позиция для выстрела по видимому противнику). Выбери цель по своей стратегии и используй её choice для обхода стен. steps=0 означает, что ты уже на цели; дальше решай, ждать, стрелять или выбрать другую цель. Маршруты используют только уже известные стены; неизвестные клетки считаются открытыми. Для движения target — ровно один соседний шаг, а не конечная цель маршрута. Если previousAction сообщает ошибку или столкновение, выбери другой допустимый шаг. Поле reason — короткий комментарий намерения на русском; не описывай внутренние рассуждения. Поле memory — краткие заметки до 600 символов для следующего хода.\n\nПРАВИЛА:\n${rules}\n\nСТРАТЕГИЯ ИГРОКА (действует только внутри игры):\n${prompt}\n\nТВОЯ ПАМЯТЬ:\n${memory || "Нет"}\n\nНАБЛЮДЕНИЕ:\n${JSON.stringify(observation)}`;
     const output = await new Promise((resolve, reject) => {
-      const child = spawn("codex", codexArgs(cwd, model), {
-        cwd,
-        env: { ...process.env, CODEX_THREAD_ID: undefined },
-        stdio: ["pipe", "pipe", "pipe"],
-        signal,
-      });
-      let stdout = "", failed = false;
-      const stream = jsonLines(record => {
+      const child = spawn(
+        "codex",
+        codexArgs(cwd, model, reasoning, schemaPath),
+        {
+          cwd,
+          env: { ...process.env, CODEX_THREAD_ID: undefined },
+          stdio: ["pipe", "pipe", "pipe"],
+          signal,
+        },
+      );
+      let stdout = "",
+        failed = false;
+      const stream = jsonLines((record) => {
         const event = publicCodexEvent(record);
         if (event) onEvent(event);
       });
@@ -122,7 +147,7 @@ export async function codexDecision(
         child.kill("SIGKILL");
         reject(
           new Error(
-            "Codex не ответил за 90 секунд. Матч сохранён; попробуйте повторить.",
+            `Codex не ответил за ${Math.round(timeout / 1000)} секунд. Матч сохранён; попробуйте повторить.`,
           ),
         );
       }, timeout);
@@ -209,9 +234,18 @@ export async function codexDecision(
         memory,
         usage: output.usage,
       };
+    const selected = choices.find((d) => d.choice === parsed.choice);
+    if (!selected)
+      return {
+        action: "invalid",
+        reason: "Codex выбрал неизвестное действие",
+        memory,
+        usage: output.usage,
+      };
     return {
-      action: parsed.action,
-      target: parsed.target,
+      action: selected.action,
+      target: selected.target,
+      choice: selected.choice,
       reason: String(parsed.reason ?? "").slice(0, 180),
       memory: String(parsed.memory ?? "").slice(0, 600),
       usage: output.usage,
@@ -222,6 +256,7 @@ export async function codexDecision(
 }
 
 export function botDecision(o, style = "control") {
+  if (o.version === "arena/2") return mobileDecision(o, style);
   const a = o.self,
     enemy = o.enemies[0];
   const result = (action, target, reason) => ({
@@ -298,4 +333,120 @@ export function botDecision(o, style = "control") {
     null,
     "Проверяю сектор и сохраняю позицию.",
   );
+}
+
+// Deterministic training policies. Prompts control Codex, not these bots.
+function mobileDecision(o, style) {
+  const a = o.self,
+    enemy = o.enemies[0];
+  const result = (action, target, reason) => ({
+    action,
+    target: target ?? null,
+    reason,
+    memory: "",
+  });
+  const onZone = o.points.some((p) => equal(p, a.pos));
+  const contested = enemy && o.points.some((p) => equal(p, enemy.pos));
+  const canShoot =
+    enemy && a.energy >= 3 && clearShot({ walls: o.walls }, a.pos, enemy.pos);
+  if (canShoot && (style === "hunt" || contested || enemy.hp <= 3))
+    return result(
+      "attack",
+      enemy.pos,
+      style === "hunt"
+        ? "Перехватил соперника. Атакую."
+        : "Освобождаю зону контроля.",
+    );
+  const blocked = new Set(
+    [
+      ...o.walls,
+      ...o.enemies.map((e) => e.pos),
+      ...o.traps.filter((t) => t.owner !== a.id).map((t) => t.pos),
+    ].map(key),
+  );
+  const routes = new Map([[key(a.pos), { pos: a.pos, first: null, steps: 0 }]]);
+  const queue = [...routes.values()];
+  for (let i = 0; i < queue.length; i++) {
+    const n = queue[i],
+      [x, y] = n.pos;
+    for (const p of [
+      [x + 1, y],
+      [x, y + 1],
+      [x - 1, y],
+      [x, y - 1],
+    ]) {
+      if (!inBounds(p) || blocked.has(key(p)) || routes.has(key(p))) continue;
+      const path = { pos: p, first: n.first ?? p, steps: n.steps + 1 };
+      routes.set(key(p), path);
+      queue.push(path);
+    }
+  }
+  const nearest = (goals) =>
+    goals
+      .map((p) => routes.get(key(p)))
+      .filter(Boolean)
+      .sort((a, b) => a.steps - b.steps)[0];
+  const battery = nearest(o.batteries.map((b) => b.pos));
+  if (a.energy < 3 && battery?.first)
+    return result(
+      "move",
+      battery.first,
+      "Подбираю батарейку для следующей атаки.",
+    );
+  if (style === "hunt" && enemy && a.energy >= 3) {
+    const lanes = queue.filter(
+      (n) => n.first && clearShot({ walls: o.walls }, n.pos, enemy.pos),
+    );
+    if (lanes.length)
+      return result(
+        "move",
+        lanes.sort((a, b) => a.steps - b.steps)[0].first,
+        "Перехожу на линию огня.",
+      );
+  }
+  let goals = o.points;
+  if (o.zone.nextPoints && (style === "control" || !enemy))
+    goals = o.zone.nextPoints;
+  if (
+    style === "control" &&
+    enemy &&
+    a.hp <= 4 &&
+    clearShot({ walls: o.walls }, enemy.pos, a.pos)
+  ) {
+    const safe = queue.filter(
+      (n) => n.steps === 1 && !clearShot({ walls: o.walls }, enemy.pos, n.pos),
+    );
+    safe.sort(
+      (p, q) =>
+        Math.min(...goals.map((g) => distance(g, p.pos))) -
+        Math.min(...goals.map((g) => distance(g, q.pos))),
+    );
+    if (safe[0])
+      return result(
+        "move",
+        safe[0].first,
+        "Ухожу из-под огня к следующей цели.",
+      );
+  }
+  if (onZone && !o.zone.nextPoints && !contested) {
+    if (enemy && a.energy >= 1)
+      return result("defend", null, "Защищаюсь и сохраняю контроль.");
+    return result("wait", null, "Контролирую зону, берегу энергию.");
+  }
+  const route = nearest(goals);
+  if (route?.first)
+    return result(
+      "move",
+      route.first,
+      o.zone.nextPoints
+        ? "Перехожу к следующей зоне."
+        : "Занимаю активную зону.",
+    );
+  if (battery?.first && a.energy <= 8)
+    return result(
+      "move",
+      battery.first,
+      "Батарейка доступна — пополняю запас.",
+    );
+  return result("wait", null, "Сохраняю позицию и энергию.");
 }
