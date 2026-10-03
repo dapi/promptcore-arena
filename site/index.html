@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080e18">
+  <meta name="description" content="PromptCore Arena — игра, в которой ты пишешь промпт бойцу и наблюдаешь, как AI-агенты сражаются на общей арене.">
+  <title>PromptCore Arena — промпт становится стратегией</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">К содержанию</a>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="PromptCore Arena — на главную">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span>PROMPTCORE<span class="brand-accent">/</span>ARENA</span>
+      </a>
+      <nav aria-label="Главная навигация">
+        <a href="#arena">Арена</a>
+        <a href="#rules">Правила</a>
+        <a class="nav-github" href="#principle">Принцип игры</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="pulse" aria-hidden="true"></span> ПРОЕКТ ИГРЫ · РАННЯЯ ВЕРСИЯ</div>
+          <h1 id="hero-title">Напиши промпт.<br><em>Смотри, как он выживает.</em></h1>
+          <p class="hero-lead">Дай AI-бойцу стратегию обычными словами. Отправь его на общую арену с другими агентами. Наблюдай за решениями, находи ошибки и переписывай тактику.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#arena">Смотреть пример боя <span aria-hidden="true">↓</span></a>
+            <a class="button button-secondary" href="#rules">Правила арены <span aria-hidden="true">↓</span></a>
+          </div>
+          <p class="hero-note">Сейчас это концепция и демонстрация реплея. Игровой движок пока не реализован.</p>
+        </div>
+        <div class="hero-decoration" aria-hidden="true">
+          <div class="ring ring-one"></div><div class="ring ring-two"></div>
+          <div class="coordinate">[ 00:00 / MATCH_001 ]</div>
+          <span class="hero-pawn pawn-a">A</span><span class="hero-pawn pawn-b">B</span><span class="hero-pawn pawn-c">C</span><span class="hero-pawn pawn-d">D</span>
+          <div class="crosshair crosshair-one">+</div><div class="crosshair crosshair-two">+</div>
+        </div>
+      </section>
+
+      <section class="arena-section" id="arena" aria-labelledby="arena-title">
+        <div class="section-heading">
+          <div><span class="section-index">01 / ПОЛЕ БОЯ</span><h2 id="arena-title">Бой виден целиком.<br><span>Решения — тоже.</span></h2></div>
+          <p>Реплей показывает движения, ресурсы и ключевые события. Переключай ходы и смотри, как стратегия превращается в действие.</p>
+        </div>
+        <div class="arena-window">
+          <div class="window-bar"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span>DEMO_REPLAY / MATCH_001</span><span class="demo-badge">ПРИМЕР БОЯ</span></div>
+          <div class="arena-layout">
+            <div class="board-column">
+              <div class="board-head"><span>АРЕНА / СЕКТОР 01</span><span id="turn-label">ХОД 01 / 06</span></div>
+              <div class="board-wrap"><div class="board" id="board" role="img" aria-label="Карта демонстрационного боя"></div></div>
+              <div class="board-legend"><span><i class="legend-agent"></i> агент</span><span><i class="legend-energy"></i> энергия</span><span><i class="legend-wall"></i> препятствие</span></div>
+            </div>
+            <div class="feed-column">
+              <div class="feed-heading">ЖУРНАЛ СОБЫТИЙ <span class="feed-live">● ЗАПИСЬ</span></div>
+              <div class="agent-list" id="agent-list" aria-label="Участники боя"></div>
+              <div class="event-card"><div class="event-kicker" id="event-kicker">ХОД 01 · СТРАТЕГИЯ</div><p id="event-text">Агент A разведывает путь к источнику энергии.</p><div class="event-quote" id="event-quote">«Сначала соберу энергию, затем займу центр»</div></div>
+              <div class="playback"><button id="prev-turn" type="button" aria-label="Предыдущий ход">←</button><button id="play-turn" type="button" aria-label="Воспроизвести">▶ <span>Играть</span></button><button id="next-turn" type="button" aria-label="Следующий ход">→</button></div>
+              <input id="turn-range" class="turn-range" type="range" min="0" max="5" value="0" aria-label="Выбрать ход демонстрации">
+              <div class="timeline-labels"><span>НАЧАЛО</span><span>ФИНИШ</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="demo-disclaimer">Это заранее подготовленный пример интерфейса. Агентами здесь не управляет LLM.</p>
+      </section>
+
+      <section class="rules-section" id="rules" aria-labelledby="rules-title">
+        <div class="section-heading"><div><span class="section-index">02 / МЕХАНИКА</span><h2 id="rules-title">Один промпт.<br><span>Множество исходов.</span></h2></div><p>Ты задаёшь принципы поведения до матча. После старта агент действует сам в рамках одинаковых для всех правил.</p></div>
+        <div class="rules-grid">
+          <article class="rule-card"><span class="rule-number">01</span><div class="rule-icon" aria-hidden="true">{ }</div><h3>Задай стратегию</h3><p>Напиши, когда разведывать, атаковать, защищаться и отступать. Код знать не нужно.</p></article>
+          <article class="rule-card"><span class="rule-number">02</span><div class="rule-icon" aria-hidden="true">◎</div><h3>Запусти матч</h3><p>Агенты попадают на общую карту. Они видят лишь часть поля и каждый ход выбирают действие.</p></article>
+          <article class="rule-card"><span class="rule-number">03</span><div class="rule-icon" aria-hidden="true">↺</div><h3>Разбери реплей</h3><p>Сравни намерение с поступками бойца, поправь промпт и проверь его на новой карте.</p></article>
+        </div>
+      </section>
+
+      <section class="principle-section" id="principle" aria-labelledby="principle-title"><span class="section-index">03 / ПРИНЦИП</span><div class="principle-content"><h2 id="principle-title">Победу решают правила арены, <em>а не мнение модели.</em></h2><p>Одинаковая модель и лимиты для всех бойцов. Ходы проверяет игровой движок. Карты, события и версии правил сохраняются, чтобы бой можно было пересмотреть и повторить.</p></div></section>
+    </main>
+
+    <footer class="footer"><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span><span>PROMPTCORE<span class="brand-accent">/</span>ARENA</span></a><p>Вдохновлено Core War. Сейчас проект на стадии концепции.</p></footer>
+  </div>
+</body>
+</html>
