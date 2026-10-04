@@ -56,27 +56,36 @@ const icons = {
   invalid: "!",
 };
 const arena = new Arena($("#battlefield"));
-const sound = new ArenaSound();
+const sound = new ArenaSound({ onChange: updateSoundButton });
 function updateSoundButton() {
   const button = $("#sound-toggle");
-  button.setAttribute("aria-pressed", String(sound.enabled));
-  button.setAttribute(
-    "aria-label",
-    sound.enabled ? "Выключить звук" : "Включить звук",
-  );
-  button.title = sound.enabled ? "Выключить звук" : "Включить звук";
+  const label = sound.ready ? "Выключить звук" : "Включить звук";
+  button.disabled = !sound.available;
+  button.setAttribute("aria-pressed", String(sound.ready));
+  button.setAttribute("aria-label", label);
+  button.title = sound.available
+    ? sound.ready
+      ? label
+      : "Включить звук · прозвучит короткий сигнал"
+    : "Этот браузер не поддерживает звук игры";
+  $("#sound-label").textContent = !sound.available
+    ? "Звук недоступен"
+    : sound.ready
+      ? "Звук"
+      : sound.enabled
+        ? "Включить звук"
+        : "Без звука";
 }
 updateSoundButton();
 $("#sound-toggle").addEventListener("click", () => {
-  sound.toggle();
-  updateSoundButton();
+  void sound.toggle();
 });
-document.addEventListener("pointerdown", () => void sound.unlock(), {
-  capture: true,
-});
-document.addEventListener("keydown", () => void sound.unlock(), {
-  capture: true,
-});
+function unlockSound(event) {
+  // Let the sound button handle its own activation before changing its state.
+  if (!event.target.closest?.("#sound-toggle")) void sound.unlock();
+}
+document.addEventListener("click", unlockSound, { capture: true });
+document.addEventListener("keydown", unlockSound, { capture: true });
 
 let config,
   match = null,
@@ -768,6 +777,7 @@ async function start(series = false) {
     await poll();
     if (job) connectStream(job);
     play();
+    sound.confirm();
   } catch (e) {
     launching = false;
     updateMonitor();

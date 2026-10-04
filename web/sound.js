@@ -1,6 +1,8 @@
 // Local synthesized effects. Audio starts only after a user gesture.
 export class ArenaSound {
-  constructor() {
+  constructor({ onChange = () => {} } = {}) {
+    this.onChange = onChange;
+    this.available = Boolean(window.AudioContext || window.webkitAudioContext);
     try {
       this.enabled = localStorage.getItem("arena-sound") !== "off";
     } catch {
@@ -9,32 +11,47 @@ export class ArenaSound {
     this.nodes = new Set();
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) this.stop();
+      else if (this.context) void this.unlock();
     });
   }
+  get ready() {
+    return this.enabled && this.context?.state === "running";
+  }
   async unlock() {
-    if (!this.enabled) return;
+    if (!this.enabled || !this.available) return false;
     const Audio = window.AudioContext || window.webkitAudioContext;
-    if (!Audio) return;
     try {
-      if (!this.context) {
+      if (!this.context || this.context.state === "closed") {
+        this.stop();
         this.context = new Audio();
+        this.context.onstatechange = () => this.onChange();
         this.master = this.context.createGain();
-        this.master.gain.value = 0.12;
+        this.master.gain.value = 0.3;
         this.master.connect(this.context.destination);
       }
-      if (this.context.state === "suspended") await this.context.resume();
+      if (this.context.state !== "running") await this.context.resume();
     } catch {
       /* Audio availability never blocks the game. */
+    } finally {
+      this.onChange();
     }
+    return this.ready;
   }
-  toggle() {
-    this.enabled = !this.enabled;
+  async toggle() {
+    // The first click activates audio; only an already playing context is muted.
+    this.enabled = !this.ready;
     try {
       localStorage.setItem("arena-sound", this.enabled ? "on" : "off");
     } catch {}
-    if (this.enabled) void this.unlock();
-    else this.stop();
+    if (this.enabled) {
+      if (await this.unlock()) this.confirm();
+    } else this.stop();
+    this.onChange();
     return this.enabled;
+  }
+  confirm() {
+    this.tone(660, 0.13, { volume: 0.28 });
+    this.tone(880, 0.17, { delay: 0.09, volume: 0.28 });
   }
   stop() {
     for (const oscillator of this.nodes) {
@@ -85,7 +102,7 @@ export class ArenaSound {
     this.lastKey = key;
     const types = new Set(events.map((e) => e.type));
     if (types.has("move"))
-      this.tone(140, 0.065, { end: 85, type: "triangle", volume: 0.18 });
+      this.tone(240, 0.095, { end: 140, type: "triangle", volume: 0.22 });
     if (types.has("attack") || types.has("miss"))
       this.tone(720, 0.16, { end: 95, type: "sawtooth", volume: 0.16 });
     if (events.some((e) => e.type === "attack" && e.damage > 0))

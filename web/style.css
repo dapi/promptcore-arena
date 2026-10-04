@@ -668,6 +668,7 @@ select {
 }
 .arena-bottom {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
@@ -2467,17 +2468,23 @@ input:not([type]) {
   white-space: nowrap;
 }
 .sound-toggle {
-  display: grid;
-  place-items: center;
-  width: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
   height: 26px;
-  padding: 4px;
-  border: 1px solid transparent;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
   border-radius: 4px;
   background: none;
   color: var(--muted);
   margin-left: auto;
   flex: none;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.sound-toggle[aria-pressed="true"] {
+  color: var(--a);
 }
 .sound-toggle:hover {
   border-color: var(--line);
