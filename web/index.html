@@ -14,6 +14,7 @@
     <header class="topbar">
       <a class="brand" href="/" aria-label="PromptCore Arena">
         <img src="/logo.svg" alt="" width="390" height="64" />
+        <span id="app-version" class="app-version" title="Версия игры"></span>
       </a>
       <nav aria-label="Разделы">
         <button class="tab active" data-tab="arena">Арена</button
@@ -89,6 +90,10 @@
               ><textarea
                 id="prompt-a"
                 maxlength="6000"
+                readonly
+                aria-haspopup="dialog"
+                aria-controls="prompt-dialog"
+                title="Открыть большой редактор · Enter"
                 spellcheck="false"
               ></textarea>
               <div class="editor-foot">
@@ -145,6 +150,10 @@
               ><textarea
                 id="prompt-b"
                 maxlength="6000"
+                readonly
+                aria-haspopup="dialog"
+                aria-controls="prompt-dialog"
+                title="Открыть большой редактор · Enter"
                 spellcheck="false"
               ></textarea>
               <div class="editor-foot">
@@ -573,5 +582,50 @@
         </div>
       </section>
     </main>
+    <dialog
+      id="prompt-dialog"
+      class="prompt-dialog"
+      aria-labelledby="prompt-dialog-title"
+    >
+      <form>
+        <header class="prompt-dialog-header">
+          <div>
+            <h2 id="prompt-dialog-title">Стратегия бойца</h2>
+            <p data-prompt-lock hidden>
+              Промпт этого боя зафиксирован · только чтение
+            </p>
+          </div>
+          <button
+            type="button"
+            data-prompt-close
+            class="text-button"
+            aria-label="Закрыть редактор"
+          >
+            ×
+          </button>
+        </header>
+        <label class="sr-only" for="prompt-dialog-text">Текст стратегии</label>
+        <textarea
+          id="prompt-dialog-text"
+          maxlength="6000"
+          spellcheck="false"
+          autofocus
+        ></textarea>
+        <footer class="prompt-dialog-footer">
+          <span data-prompt-count></span>
+          <button type="button" data-prompt-cancel class="secondary">
+            Отмена
+          </button>
+          <button
+            type="submit"
+            data-prompt-save
+            class="primary"
+            title="Сохранить · Ctrl+Enter или ⌘+Enter"
+          >
+            Сохранить
+          </button>
+        </footer>
+      </form>
+    </dialog>
   </body>
 </html>

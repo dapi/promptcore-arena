@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../src/version.mjs";
 import { execFileSync, spawn } from "node:child_process";
 import { createApp } from "../src/server.mjs";
 let port = 0;
@@ -27,7 +28,7 @@ server.on("error", (error) => {
 });
 server.listen(port, "127.0.0.1", () => {
   const url = `http://127.0.0.1:${server.address().port}`;
-  console.log(`PromptCore Arena → ${url}`);
+  console.log(`PromptCore Arena v${APP_VERSION} → ${url}`);
   if (!process.argv.includes("--no-open")) {
     const command =
       process.platform === "darwin"

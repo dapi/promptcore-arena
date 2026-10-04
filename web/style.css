@@ -2620,3 +2620,134 @@ input:not([type]) {
   margin: 0 0 12px;
   color: var(--ink);
 }
+
+.brand {
+  align-items: center;
+  gap: 10px;
+}
+.app-version {
+  color: var(--muted);
+  font: 400 11px/1.2 var(--mono);
+}
+#prompt-a,
+#prompt-b {
+  cursor: zoom-in;
+}
+body:has(.prompt-dialog[open]) {
+  overflow: hidden;
+}
+.prompt-dialog {
+  width: min(900px, calc(100vw - 40px));
+  height: min(760px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: none;
+  padding: 28px;
+  border: 1px solid #3b4654;
+  border-radius: 16px;
+  background: #141b24;
+  color: var(--ink);
+  box-shadow: 0 24px 90px #0009;
+}
+.prompt-dialog::backdrop {
+  background: #03070cbf;
+  backdrop-filter: blur(6px);
+}
+.prompt-dialog form {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 20px;
+  height: 100%;
+}
+.prompt-dialog-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.prompt-dialog-header h2 {
+  font-size: 22px;
+  line-height: 1.3;
+  margin: 0;
+}
+.prompt-dialog-header p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+.prompt-dialog-header button {
+  font-size: 28px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.prompt-dialog textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  resize: none;
+  margin: 0;
+  padding: 20px;
+  border: 1px solid #415065;
+  border-radius: 9px;
+  background: #0e141d;
+  color: var(--ink);
+  font:
+    400 18px/1.65 Inter,
+    Arial,
+    Helvetica,
+    sans-serif;
+  cursor: text;
+}
+.prompt-dialog textarea:focus {
+  outline: 2px solid var(--a);
+  outline-offset: 2px;
+}
+.prompt-dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.prompt-dialog-footer span {
+  margin-right: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.prompt-dialog-footer button {
+  width: auto;
+  margin: 0;
+  padding: 12px 22px;
+  font-size: 14px;
+}
+@media (max-width: 760px) {
+  .brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+  .app-version {
+    font-size: 9px;
+  }
+  .prompt-dialog {
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 24px);
+    padding: 16px;
+    border-radius: 12px;
+  }
+  .prompt-dialog form {
+    gap: 16px;
+  }
+  .prompt-dialog-header h2 {
+    font-size: 20px;
+  }
+  .prompt-dialog textarea {
+    padding: 14px;
+    font-size: 17px;
+  }
+  .prompt-dialog-footer {
+    gap: 8px;
+  }
+  .prompt-dialog-footer button {
+    padding: 11px 14px;
+  }
+}

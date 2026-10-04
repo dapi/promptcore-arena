@@ -113,6 +113,7 @@ const report = {
     seed: m.seed,
     swap: m.swap,
     version: m.version,
+    appVersion: m.appVersion ?? null,
     model: m.model,
     reasoning: m.reasoning,
     cliVersion: m.cliVersion,

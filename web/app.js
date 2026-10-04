@@ -1,3 +1,4 @@
+import { PromptEditor } from "./prompt-editor.js";
 import {
   analyzeMatch,
   matchUsage,
@@ -97,6 +98,16 @@ let config,
   telemetryView = "messages",
   followLive = false;
 let fighters = normalizeFighters(DEFAULT_FIGHTERS);
+let promptsLocked = false;
+const promptEditor = new PromptEditor($("#prompt-dialog"), {
+  read: (id) => $(`#prompt-${id}`).value,
+  write: (id, value) => {
+    $(`#prompt-${id}`).value = value;
+    saveDraft();
+  },
+  editable: () => !promptsLocked && !launching && !job,
+  name: (id) => names[id.toUpperCase()],
+});
 function readFighters() {
   return normalizeFighters(
     ["a", "b"].map((id, i) => ({
@@ -468,10 +479,12 @@ function updateMode() {
   );
 }
 function lockPrompts(locked) {
+  if (locked && !promptsLocked) promptEditor.close();
+  promptsLocked = locked;
   for (const [i, id] of ["a", "b"].entries()) {
     const editor = $(`#prompt-${id}`);
     editor.disabled = false;
-    editor.readOnly = locked;
+    editor.readOnly = true;
     editor
       .closest(".fighter-editor")
       .classList.toggle("strategy-locked", locked);
@@ -706,6 +719,8 @@ async function preview() {
     $("#battle-dot").classList.remove("running");
     frames = [{ state, events: [], decisions: {} }];
     $("#mode-label").textContent = "ПРЕДПРОСМОТР КАРТЫ";
+    $("#mode-label").title =
+      `Игра v${config.appVersion} · правила ${config.version}`;
     $("#seed-label").textContent = state.seed;
     $("#battle-status").textContent = "Арена готова";
     render(0);
@@ -762,6 +777,7 @@ async function start(series = false) {
 }
 function loadMatch(m, { rewind = false } = {}) {
   const changed = match?.id !== m.id;
+  if (changed) promptEditor.close();
   const ended =
     m.status !== "running" && (changed || match?.status === "running");
   if (ended) telemetryView = "analysis";
@@ -774,6 +790,8 @@ function loadMatch(m, { rewind = false } = {}) {
     m.mode === "codex"
       ? `${m.model} · ${m.reasoning ?? "low"}${m.version === "arena/1" ? " · прежние правила" : ""}`
       : "ТРЕНИРОВКА · ВСТРОЕННЫЕ БОТЫ";
+  $("#mode-label").title =
+    `Игра ${m.appVersion ? `v${m.appVersion}` : "до введения версий"} · правила ${m.version}`;
   $("#live-badge").textContent =
     m.status === "running" ? "● БОЙ ИДЁТ" : "● ЗАПИСЬ";
   if (changed || rewind) {
@@ -1147,7 +1165,16 @@ document.addEventListener("keydown", (event) => {
     $(".map-settings summary").focus();
   }
 });
-$$("textarea").forEach((el) => el.addEventListener("input", saveDraft));
+for (const id of ["a", "b"]) {
+  const field = $(`#prompt-${id}`);
+  field.addEventListener("click", () => promptEditor.open(id));
+  field.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      promptEditor.open(id);
+    }
+  });
+}
 $$("[data-reset]").forEach((b) =>
   b.addEventListener("click", () => {
     $(b.dataset.reset === "0" ? "#prompt-a" : "#prompt-b").value =
@@ -1166,10 +1193,12 @@ $$("[data-edit-prompt]").forEach((button) =>
     if (job || launching) return;
     await preview();
     $(`#prompt-${button.dataset.editPrompt}`).focus();
+    promptEditor.open(button.dataset.editPrompt);
   }),
 );
 window.addEventListener("keydown", (e) => {
   if (
+    $("#prompt-dialog").open ||
     /INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName) ||
     $("#arena-tab").hidden ||
     $(".playback").hidden
@@ -1190,6 +1219,11 @@ window.addEventListener("keydown", (e) => {
 });
 try {
   config = await api("/api/config");
+  $("#app-version").textContent = `v${config.appVersion}`;
+  $(".brand").setAttribute(
+    "aria-label",
+    `PromptCore Arena v${config.appVersion}`,
+  );
   let draft;
   try {
     draft = JSON.parse(localStorage.getItem("arena-draft"));
@@ -1211,7 +1245,7 @@ try {
     draft?.reasoning || config.codex.reasoning || "low",
   );
   $("#model-footer").textContent =
-    `${config.codex.version ?? "ТРЕНИРОВКА"} / ${config.version}`;
+    `${config.appVersion} / ${config.codex.version ?? "ТРЕНИРОВКА"} / ${config.version}`;
   updateMode();
   await preview();
   await loadArchive();

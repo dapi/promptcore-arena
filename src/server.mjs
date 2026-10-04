@@ -1,3 +1,4 @@
+import { APP_VERSION } from "./version.mjs";
 import http from "node:http";
 import { readFile, writeFile, mkdir, readdir, rename } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -110,6 +111,7 @@ export async function createApp({
   const summary = (m) => ({
     id: m.id,
     created: m.created,
+    appVersion: m.appVersion ?? null,
     mode: m.mode,
     model: m.model,
     reasoning: m.mode === "codex" ? (m.reasoning ?? "low") : null,
@@ -146,6 +148,7 @@ export async function createApp({
           id: randomUUID(),
           created: new Date().toISOString(),
           version: VERSION,
+          appVersion: APP_VERSION,
           mode: input.mode,
           model: input.mode === "codex" ? input.model : "builtin/2",
           reasoning: input.mode === "codex" ? input.reasoning : null,
@@ -399,6 +402,7 @@ export async function createApp({
           prompts: DEFAULT_PROMPTS,
           legacyPrompts: LEGACY_DEFAULT_PROMPTS,
           version: VERSION,
+          appVersion: APP_VERSION,
           active,
         });
       if (path === "/api/matches" && req.method === "GET") {
@@ -659,6 +663,7 @@ export async function createApp({
       const staticFiles = {
         "/": "index.html",
         "/app.js": "app.js",
+        "/prompt-editor.js": "prompt-editor.js",
         "/arena.js": "arena.js",
         "/sound.js": "sound.js",
         "/fighters.js": "fighters.js",

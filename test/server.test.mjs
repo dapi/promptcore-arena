@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../src/version.mjs";
 import http from "node:http";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -57,6 +58,7 @@ test("restart recovers interrupted usage and archived series without inventing z
         ? data.matches[0]
         : data;
     assert.equal(match.status, "interrupted");
+    assert.equal(match.appVersion ?? null, null);
     assert.equal(match.usage.total, 120);
     assert.equal(match.usage.missing, 1);
     assert.equal(match.usage.pending, 0);
@@ -128,7 +130,9 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
     }
     throw new Error("Job timeout");
   };
-  assert.equal((await fetch(base + "/api/config")).status, 200);
+  const config = await (await fetch(base + "/api/config")).json();
+  assert.equal(config.appVersion, APP_VERSION);
+  assert.equal(config.version, "arena/2");
   assert.equal(
     await new Promise((resolve) =>
       http.get(base + "/", { headers: { Host: "attacker.example" } }, (r) => {
@@ -165,6 +169,8 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
   const replay = await (await fetch(`${base}/api/matches/${file.id}`)).json();
   assert.deepEqual(replay.frames, file.frames);
   assert.equal(replay.prompts[0], input.prompts[0]);
+  assert.equal(replay.appVersion, APP_VERSION);
+  assert.equal(replay.version, "arena/2");
   assert.equal(replay.requests.length, (replay.frames.length - 1) * 2);
   assert.equal(replay.usage.total, replay.requests.length * 110);
   assert.equal(replay.usage.cached, replay.requests.length * 50);
@@ -182,6 +188,7 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
     replay.requests.length,
   );
   const history = await (await fetch(base + "/api/matches")).json();
+  assert.equal(history.find((m) => m.id === replay.id).appVersion, APP_VERSION);
   assert.deepEqual(history.find((m) => m.id === replay.id).usage, replay.usage);
   assert.equal(
     (await readdir(join(dir, "matches"))).filter((x) => x.endsWith(".json"))
@@ -321,14 +328,16 @@ test("SSE emits model output before action completes and persists appearance and
     headers: { "Last-Event-ID": String(lastSeq) },
     signal: ac.signal,
   });
-  const first = new TextDecoder().decode(
-    (await reconnect.body.getReader().read()).value,
-  );
-  assert.ok(first.includes("event: status"));
-  assert.ok(
-    !/^id: /m.test(first),
-    "reconnection must not replay acknowledged events",
-  );
+  const reconnectReader = reconnect.body.getReader();
+  let first = "";
+  while (!first.includes("event: status"))
+    first += new TextDecoder().decode((await reconnectReader.read()).value);
+  // The other fighter may emit fresh events between the snapshot and reconnect.
+  for (const [, seq] of first.matchAll(/^id: (\d+)/gm))
+    assert.ok(
+      Number(seq) > lastSeq,
+      "reconnection must not replay acknowledged events",
+    );
   release();
   let done;
   for (let i = 0; i < 200; i++) {

@@ -11,7 +11,10 @@
     "dev": "node scripts/start.mjs --no-open",
     "test": "node --test",
     "playtest": "node scripts/gameplay-playtest.mjs",
-    "check": "node --check src/engine.mjs && node --check src/engine-v1.mjs && node --check src/server.mjs && node --check src/agents.mjs && node --check web/app.js && node --check web/arena.js && node --check web/sound.js && node --check src/codex-models.mjs && node --check src/navigation.mjs && node --check web/match-stats.js && node --check scripts/strategy-playtest.mjs",
-    "playtest:codex": "node scripts/strategy-playtest.mjs"
+    "check": "node --check src/engine.mjs && node --check src/engine-v1.mjs && node --check src/server.mjs && node --check src/agents.mjs && node --check web/app.js && node --check web/arena.js && node --check web/sound.js && node --check src/codex-models.mjs && node --check src/navigation.mjs && node --check web/match-stats.js && node --check scripts/strategy-playtest.mjs && node --check web/prompt-editor.js && npm run check:version",
+    "playtest:codex": "node scripts/strategy-playtest.mjs",
+    "check:version": "node scripts/check-version.mjs",
+    "preversion": "npm run check && npm test",
+    "version": "npm run check:version"
   }
 }
