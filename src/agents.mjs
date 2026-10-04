@@ -112,6 +112,7 @@ export async function codexDecision(
     signal,
     timeout = 90000,
     onEvent = () => {},
+    onUsage = () => {},
   } = {},
 ) {
   const cwd = await mkdtemp(join(tmpdir(), "promptcore-agent-"));
@@ -136,45 +137,47 @@ export async function codexDecision(
         },
       );
       let stdout = "",
-        failed = false;
+        failure = null,
+        threadId = null;
       const stream = jsonLines((record) => {
+        if (record.type === "thread.started") threadId = record.thread_id;
+        if (record.type === "turn.completed" && record.usage)
+          onUsage({ usage: record.usage, threadId });
         const event = publicCodexEvent(record);
         if (event) onEvent(event);
       });
       child.stdout.setEncoding("utf8");
       const timer = setTimeout(() => {
-        failed = true;
-        child.kill("SIGKILL");
-        reject(
-          new Error(
-            `Codex не ответил за ${Math.round(timeout / 1000)} секунд. Матч сохранён; попробуйте повторить.`,
-          ),
+        failure = new Error(
+          `Codex не ответил за ${Math.round(timeout / 1000)} секунд. Матч сохранён; попробуйте повторить.`,
         );
+        child.kill("SIGKILL");
       }, timeout);
       const cleanup = () => clearTimeout(timer);
       child.stdout.on("data", (chunk) => {
         stdout += chunk;
         stream.write(chunk);
         if (stdout.length > 2_000_000) {
-          failed = true;
+          failure = new Error("Слишком большой ответ Codex");
           child.kill("SIGKILL");
-          reject(new Error("Слишком большой ответ Codex"));
         }
       });
       // stderr may contain local configuration details. Never expose or persist it.
       child.stderr.resume();
       child.on("error", (err) => {
         cleanup();
-        reject(
+        // Abort sends SIGTERM first. Do not wait forever if the CLI ignores it;
+        // close still drains buffered stdout, including any reported usage.
+        if (err.name === "AbortError" && child.pid) child.kill("SIGKILL");
+        failure =
           err.name === "AbortError"
             ? new Error("Матч остановлен")
-            : new Error("Не удалось запустить Codex. Проверьте установку CLI."),
-        );
+            : new Error("Не удалось запустить Codex. Проверьте установку CLI.");
       });
       child.on("close", (code) => {
         stream.end();
         cleanup();
-        if (failed) return;
+        if (failure) return reject(failure);
         if (signal?.aborted) return reject(new Error("Матч остановлен"));
         if (code !== 0)
           return reject(

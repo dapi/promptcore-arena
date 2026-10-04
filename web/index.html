@@ -390,6 +390,17 @@
               >
                 Хроника
               </button>
+              <button
+                id="analysis-tab"
+                type="button"
+                role="tab"
+                aria-controls="analysis-panel"
+                aria-selected="false"
+                data-telemetry="analysis"
+                hidden
+              >
+                Разбор
+              </button>
               <span class="tiny" id="live-badge">ОЖИДАНИЕ</span>
             </div>
             <section
@@ -440,6 +451,17 @@
                 </div>
               </div>
             </section>
+            <section
+              id="analysis-panel"
+              class="analysis-panel"
+              role="tabpanel"
+              aria-labelledby="analysis-tab"
+              hidden
+            ></section>
+            <details id="usage-panel" class="usage-panel" hidden>
+              <summary id="usage-summary">Расход токенов</summary>
+              <div id="usage-details"></div>
+            </details>
           </aside>
         </div>
 

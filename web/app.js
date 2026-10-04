@@ -1,3 +1,10 @@
+import {
+  analyzeMatch,
+  matchUsage,
+  aggregateUsage,
+  usageRequests,
+  seriesStats,
+} from "./match-stats.js";
 import { Arena } from "./arena.js";
 import { ArenaSound } from "./sound.js";
 import {
@@ -199,12 +206,22 @@ function updateMonitor() {
     ? trace.filter((e) => !current || e.matchId === current.id)
     : replayTrace;
   const hasMessages = (running ? selectedMode() : match?.mode) === "codex";
-  const showMessages = hasMessages && telemetryView === "messages";
+  const canAnalyze = Boolean(match && match.status !== "running" && !launching);
+  const showAnalysis = canAnalyze && telemetryView === "analysis";
+  const showMessages =
+    !showAnalysis && hasMessages && telemetryView !== "chronicle";
+  $("#analysis-tab").hidden = !canAnalyze;
+  $("#analysis-tab").setAttribute("aria-selected", String(showAnalysis));
+  $("#analysis-panel").hidden = !showAnalysis;
+  renderUsage();
   $("#messages-tab").disabled = !hasMessages;
   $("#messages-tab").setAttribute("aria-selected", String(showMessages));
-  $("#chronicle-tab").setAttribute("aria-selected", String(!showMessages));
+  $("#chronicle-tab").setAttribute(
+    "aria-selected",
+    String(!showMessages && !showAnalysis),
+  );
   $("#model-monitor").hidden = !showMessages;
-  $("#chronicle-panel").hidden = showMessages;
+  $("#chronicle-panel").hidden = showMessages || showAnalysis;
   $(".monitor-title h2").textContent = liveView
     ? "Сейчас в Codex"
     : "Сообщения этого хода";
@@ -297,9 +314,7 @@ function updateMonitor() {
     "aria-label",
     playing ? "Приостановить просмотр" : "Продолжить просмотр",
   );
-  $("#play").title = playing
-    ? "Пауза повтора"
-    : "Продолжить просмотр";
+  $("#play").title = playing ? "Пауза повтора" : "Продолжить просмотр";
   $("#play").disabled = !canReplay;
   $("#timeline").disabled = !canReplay;
   $("#timeline").title =
@@ -356,7 +371,7 @@ function connectStream(id) {
         };
     }
     updateMonitor();
-    if (e.type === "frame" || e.type === "finished") {
+    if (["frame", "finished", "usage"].includes(e.type)) {
       clearTimeout(pollTimer);
       void poll();
     }
@@ -747,6 +762,10 @@ async function start(series = false) {
 }
 function loadMatch(m, { rewind = false } = {}) {
   const changed = match?.id !== m.id;
+  const ended =
+    m.status !== "running" && (changed || match?.status === "running");
+  if (ended) telemetryView = "analysis";
+  else if (changed) telemetryView = "messages";
   match = m;
   frames = m.frames;
   lockPrompts(true);
@@ -778,6 +797,7 @@ function loadMatch(m, { rewind = false } = {}) {
     $("#next").disabled = index >= frames.length - 1;
     $("#play").disabled = frames.length <= 1 && !job;
   }
+  renderAnalysis();
 }
 async function poll() {
   if (!job || pollInFlight) return;
@@ -791,10 +811,11 @@ async function poll() {
     mergeTrace(jobData.trace);
     const updated = followLive
       ? jobData.matches.at(-1)
-      : jobData.matches.find((m) => m.id === match?.id) || jobData.matches[0];
+      : jobData.matches.find((m) => m.id === match?.id) ||
+        (!match ? jobData.matches[0] : null);
     if (updated) loadMatch(updated);
     $("#battle-dot").classList.toggle("running", jobData.status === "running");
-    if (jobData.matches.some((m) => m.series)) renderSeries();
+    if (match?.series === jobData.id) renderSeries(jobData.matches);
     if (jobData.status === "running") {
       pollTimer = setTimeout(poll, 900);
     } else {
@@ -815,23 +836,137 @@ async function poll() {
     );
     pollTimer = setTimeout(poll, 3000);
   } finally {
-    ((pollInFlight = false), (telemetryView = "messages"));
+    pollInFlight = false;
     updateMonitor();
   }
 }
-function renderSeries() {
+const formatCount = (value) =>
+  value == null ? "—" : Number(value).toLocaleString("ru-RU");
+function tokenLabel(usage) {
+  if (!usage || usage.total === null) return "нет данных";
+  return `${usage.missing || usage.scope === "saved_turns_only" ? "≥ " : ""}${formatCount(usage.total)}`;
+}
+function comparisonTable(fighters, labels = names) {
+  const rows = [
+    ["Попадания / выстрелы", (s) => `${s.hits} / ${s.hits + s.misses}`],
+    ["Урон", (s) => s.damage],
+    ["Ходы с очками зоны", (s) => s.controlTurns],
+    ["Ошибки / столкновения", (s) => `${s.invalid} / ${s.collisions}`],
+    ["Ожидание вне зоны", (s) => s.waitsOutsideZone],
+  ];
+  return `<table class="analysis-table"><thead><tr><th scope="col">Показатель</th><th scope="col">${escape(labels.A)}</th><th scope="col">${escape(labels.B)}</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${label}</th><td>${value(fighters.A)}</td><td>${value(fighters.B)}</td></tr>`).join("")}</tbody></table>`;
+}
+let analysisSignature = "",
+  usageSignature = "";
+function renderAnalysis() {
+  if (!match || match.status === "running") return;
+  const signature = JSON.stringify([
+    match.id,
+    match.status,
+    frames.length,
+    names,
+  ]);
+  if (signature === analysisSignature) return;
+  analysisSignature = signature;
+  const analysis = analyzeMatch(match);
+  const outcome = analysis.outcome;
+  const resultText = !outcome
+    ? "Бой прерван: итог по сыгранным ходам."
+    : !outcome.winner
+      ? "Ничья."
+      : `${names[outcome.winner]} побеждает · ${{ survival: "здоровье", control: "контроль", hp: "здоровье", harvested: "собранная энергия" }[outcome.metric]} ${outcome.score.join(" : ")}.`;
+  const notes = ["A", "B"].flatMap((id) => {
+    const s = analysis.fighters[id],
+      hints = [];
+    if (s.misses > s.hits && s.misses >= 2)
+      hints.push(
+        `промахов ${s.misses} — уточни в стратегии, когда стрелять и как учитывать движение цели`,
+      );
+    if (s.waitsOutsideZone >= 3)
+      hints.push(
+        `ожиданий вне зоны ${s.waitsOutsideZone} — задай следующую цель при потере противника`,
+      );
+    if (s.invalid + s.collisions > 0)
+      hints.push(
+        `ошибок и столкновений ${s.invalid + s.collisions} — проверь эти ходы в хронике`,
+      );
+    if (!s.controlTurns && analysis.turns >= 16 && outcome?.winner !== id)
+      hints.push(
+        "ни одного очка зоны — добавь запасную цель, когда преследование не даёт результата",
+      );
+    return hints
+      .slice(0, 2)
+      .map((hint) => `<li><b>${escape(names[id])}:</b> ${hint}.</li>`);
+  });
+  $("#analysis-panel").innerHTML =
+    `<h2>${match.status === "complete" ? "Разбор боя" : "Разбор сыгранных ходов"}</h2><p class="analysis-outcome">${escape(resultText)}</p>${comparisonTable(analysis.fighters)}<p class="analysis-note">Ожидание вне зоны — действие «ждать» без занятия зоны. Само по себе не означает ошибку.</p>${notes.length ? `<h3>Что проверить в стратегии</h3><ul class="analysis-hints">${notes.join("")}</ul>` : ""}<h3>Ключевые моменты</h3><div class="key-moments">${analysis.moments.length ? analysis.moments.map((m) => `<button type="button" data-frame="${m.frame}"><span>Ход ${m.turn}</span><strong>${m.actor ? `${escape(names[m.actor])} · ` : ""}${m.text} ↗</strong></button>`).join("") : '<p class="analysis-note">Пока нет ключевых событий.</p>'}</div>`;
+  $("#analysis-panel")
+    .querySelectorAll("[data-frame]")
+    .forEach((button) =>
+      button.addEventListener("click", () => {
+        stop();
+        followLive = false;
+        render(Number(button.dataset.frame), true);
+      }),
+    );
+}
+function renderUsage() {
+  const box = $("#usage-panel");
+  box.hidden = !match || launching;
+  if (box.hidden) return;
+  const usage = matchUsage(match);
+  const signature = JSON.stringify([
+    match.id,
+    match.status,
+    usage,
+    index,
+    names,
+  ]);
+  if (signature === usageSignature) return;
+  usageSignature = signature;
+  $("#usage-summary").textContent =
+    match.mode === "training"
+      ? "Тренировка · без токенов"
+      : `Токены · ${tokenLabel(usage)}`;
+  if (match.mode === "training") {
+    $("#usage-details").textContent = "Встроенные боты не обращаются к модели.";
+    return;
+  }
+  const cell = (u, key) =>
+    `${u[key] !== null && u.fieldsReported[key] < u.requests ? "≥ " : ""}${formatCount(u[key])}`;
+  const rows = [
+    ["Вход", "input"],
+    ["Из них кэш", "cached"],
+    ["Выход", "output"],
+    ["Из него reasoning", "reasoning"],
+  ];
+  const turn = frames[index]?.state.turn;
+  const calls = usageRequests(match).filter((r) => r.turn === turn);
+  $("#usage-details").innerHTML =
+    `<table class="analysis-table"><thead><tr><th scope="col">За весь бой</th><th scope="col">${escape(names.A)}</th><th scope="col">${escape(names.B)}</th></tr></thead><tbody>${rows.map(([label, key]) => `<tr><th scope="row">${label}</th><td>${cell(usage.fighters.A, key)}</td><td>${cell(usage.fighters.B, key)}</td></tr>`).join("")}<tr><th scope="row">Всего</th><td>${tokenLabel(usage.fighters.A)}</td><td>${tokenLabel(usage.fighters.B)}</td></tr>${turn ? `<tr><th scope="row">На ходу ${turn}</th>${["A", "B"].map((id) => `<td>${tokenLabel(aggregateUsage(calls.filter((r) => r.agent === id)))}</td>`).join("")}</tr>` : ""}</tbody></table><p class="analysis-note">Расход получен для ${usage.reported} из ${usage.requests} запросов.${usage.pending ? ` В работе: ${usage.pending}.` : ""}${usage.missing - usage.pending > 0 ? ` Без данных: ${usage.missing - usage.pending}.` : ""}${usage.scope === "saved_turns_only" ? " Старая запись: учтены только сохранённые ходы." : ""} Кэш входит во вход, reasoning — в выход. Стоимость пока не рассчитывается.</p>`;
+}
+function renderSeries(matches) {
   const box = $("#series-results");
   box.hidden = false;
-  const complete = jobData.matches.filter((m) => m.status === "complete"),
+  const complete = matches.filter((m) => m.status === "complete"),
     wins = { A: 0, B: 0, draw: 0 };
   for (const m of complete)
     wins[m.frames.at(-1).state.result.winner || "draw"]++;
-  box.innerHTML = `<h3>Серия · ${complete.length} / 4 <span class="tiny">${escape(names.A)} ${wins.A} : ${wins.B} ${escape(names.B)} · НИЧЬИ ${wins.draw}</span></h3>${jobData.matches.map((m, i) => `<button data-match="${m.id}"><span>0${i + 1} · ${escape(m.seed)}${m.swap ? " · обмен стартами" : ""}</span><strong>${m.status === "complete" ? (m.frames.at(-1).state.result.winner ? escape(fighterName(m, m.frames.at(-1).state.result.winner)) : "Ничья") : m.status === "running" ? "Идёт бой…" : m.status === "error" ? "Ошибка" : "Остановлен"} ↗</strong></button>`).join("")}`;
+  const stats = seriesStats(matches);
+  const seriesNames = Object.fromEntries(
+    ["A", "B"].map((id) => [id, fighterName(matches[0], id)]),
+  );
+  const comparisonOpen = box.querySelector("details")?.open;
+  box.innerHTML = `<h3>Серия · ${complete.length} / 4 <span class="tiny">${escape(seriesNames.A)} ${wins.A} : ${wins.B} ${escape(seriesNames.B)} · НИЧЬИ ${wins.draw}</span></h3>${matches.map((m, i) => `<button data-match="${m.id}"><span>0${i + 1} · ${escape(m.seed)}${m.swap ? " · обмен стартами" : ""}</span><strong>${m.status === "complete" ? (m.frames.at(-1).state.result.winner ? escape(fighterName(m, m.frames.at(-1).state.result.winner)) : "Ничья") : m.status === "running" ? "Идёт бой…" : m.status === "error" ? "Ошибка" : "Остановлен"} ↗</strong></button>`).join("")}`;
+  box.insertAdjacentHTML(
+    "beforeend",
+    `<details class="series-comparison"${comparisonOpen ? " open" : ""}><summary>Сравнение стратегий · ${tokenLabel(stats.usage)} токенов</summary>${comparisonTable(stats.fighters, seriesNames)}<p class="analysis-note">${stats.completed} завершённых боёв · две карты с обменом стартами. Маленькая выборка; для повторной проверки запустите серию на другом seed.</p></details>`,
+  );
   box.querySelectorAll("button").forEach((b) =>
     b.addEventListener("click", () => {
       stop();
       loadMatch(
-        jobData.matches.find((m) => m.id === b.dataset.match),
+        matches.find((m) => m.id === b.dataset.match),
         { rewind: true },
       );
       play();
@@ -846,7 +981,7 @@ async function loadArchive() {
       ? list
           .map(
             (m) =>
-              `<article class="archive-card"><div><h2>${m.result?.winner ? `${escape(fighterName(m, m.result.winner))} побеждает` : m.status === "complete" ? "Ничья" : m.status === "running" ? "Бой идёт" : "Незавершённый бой"}</h2><p>${escape(new Date(m.created).toLocaleString("ru-RU"))}</p></div><div><p>${m.mode === "codex" ? "CODEX" : "ТРЕНИРОВКА"} · ${escape(m.model)}${m.mode === "codex" ? ` · ${escape(m.reasoning ?? "low")}` : ""}<br>${escape(m.seed)}${m.swap ? " · ОБМЕН СТАРТАМИ" : ""}</p></div><div><p>${m.turns} / 40 ХОДОВ${m.series ? "<br>МАТЧ СЕРИИ" : ""}</p></div><button class="secondary" data-replay="${m.id}">Смотреть ↗</button></article>`,
+              `<article class="archive-card"><div><h2>${m.result?.winner ? `${escape(fighterName(m, m.result.winner))} побеждает` : m.status === "complete" ? "Ничья" : m.status === "running" ? "Бой идёт" : "Незавершённый бой"}</h2><p>${escape(new Date(m.created).toLocaleString("ru-RU"))}</p></div><div><p>${m.mode === "codex" ? "CODEX" : "ТРЕНИРОВКА"} · ${escape(m.model)}${m.mode === "codex" ? ` · ${escape(m.reasoning ?? "low")}` : ""}<br>${escape(m.seed)}${m.swap ? " · ОБМЕН СТАРТАМИ" : ""}</p></div><div><p>${m.turns} / 40 ХОДОВ${m.mode === "codex" ? `<br>Токены: ${tokenLabel(m.usage)}` : ""}${m.series ? "<br>МАТЧ СЕРИИ" : ""}</p></div><button class="secondary" data-replay="${m.id}">Смотреть ↗</button></article>`,
           )
           .join("")
       : '<div class="archive-empty">Здесь будут твои бои. Начни первый на вкладке «Арена».</div>';
@@ -867,6 +1002,10 @@ async function loadArchive() {
           showTab("arena");
           $("#battle-status").textContent = "Сохранённый бой";
           $("#series-results").hidden = true;
+          if (m.series) {
+            const saved = await api(`/api/series/${m.series}`);
+            if (match?.id === m.id) renderSeries(saved.matches);
+          }
           play();
         } catch (e) {
           setMessage(e.message);

@@ -2499,3 +2499,124 @@ input:not([type]) {
 .sound-toggle[aria-pressed="false"] .sound-waves {
   display: none;
 }
+
+/* Post-match details share the existing sidebar; the arena keeps its space. */
+.analysis-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  grid-column: 1 / -1;
+  padding-right: 3px;
+}
+.analysis-panel h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.analysis-panel h3 {
+  font-size: 12px;
+  margin: 20px 0 8px;
+}
+.analysis-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.analysis-table th,
+.analysis-table td {
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  vertical-align: top;
+}
+.analysis-table th:first-child {
+  text-align: left;
+  font-weight: 400;
+}
+.analysis-table thead th {
+  max-width: 100px;
+  overflow-wrap: anywhere;
+}
+.analysis-table td:nth-child(2),
+.analysis-table thead th:nth-child(2) {
+  color: var(--a);
+}
+.analysis-table td:nth-child(3),
+.analysis-table thead th:nth-child(3) {
+  color: var(--b);
+}
+.analysis-note {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 10px 0;
+}
+.analysis-hints {
+  padding-left: 16px;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.analysis-hints li {
+  margin: 8px 0;
+}
+.key-moments button {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  padding: 9px 0;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font-size: 11px;
+}
+.key-moments button span {
+  flex: none;
+  color: var(--muted);
+}
+.key-moments button strong {
+  font-weight: 400;
+}
+.key-moments button:hover strong {
+  color: var(--lime);
+}
+.usage-panel {
+  flex: none;
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 12px;
+  font-size: 11px;
+  max-height: 44%;
+  overflow: auto;
+}
+.usage-panel summary,
+.series-comparison summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+}
+.usage-panel summary:hover,
+.series-comparison summary:hover {
+  color: var(--ink);
+}
+.series-comparison {
+  margin-top: 8px;
+}
+.telemetry-tabs {
+  flex-wrap: wrap;
+}
+@media (max-width: 999px) {
+  .analysis-panel {
+    max-height: none;
+  }
+  .usage-panel {
+    max-height: none;
+  }
+}
+.analysis-outcome {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+  color: var(--ink);
+}

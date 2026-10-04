@@ -21,6 +21,8 @@ import {
 import { discoverModels, decisionTimeout } from "./codex-models.mjs";
 import { addNavigation } from "./navigation.mjs";
 
+import { matchUsage, seriesStats } from "../web/match-stats.js";
+
 import { normalizeFighters, AVATARS } from "../web/fighters.js";
 
 const web = fileURLToPath(new URL("../web/", import.meta.url));
@@ -83,9 +85,11 @@ export async function createApp({
     progress: job.progress,
     trace: job.trace,
     matches: job.matches,
+    statistics: seriesStats(job.matches),
   });
   const writes = new Map();
   const persist = (match) => {
+    match.usage = matchUsage(match);
     const file = join(matchesDir, `${match.id}.json`),
       payload = JSON.stringify(match);
     const task = (writes.get(match.id) || Promise.resolve())
@@ -118,6 +122,11 @@ export async function createApp({
     result: m.frames.at(-1)?.state.result,
     series: m.series,
     error: m.error,
+    usage: matchUsage({
+      ...m,
+      status:
+        m.status === "running" && !liveMatch(m.id) ? "interrupted" : m.status,
+    }),
   });
   async function run(job, input) {
     try {
@@ -150,6 +159,8 @@ export async function createApp({
           status: "running",
           series: input.series ? job.id : null,
           modelEvents: [],
+          usageVersion: 1,
+          requests: [],
           frames: [{ state, events: [], decisions: {}, observations: {} }],
         };
         job.matches.push(match);
@@ -193,7 +204,14 @@ export async function createApp({
               matchId: match.id,
               startedAt: job.progress.startedAt,
             });
-            const choices = await Promise.all(
+            const turnController = new AbortController();
+            const turnSignal = AbortSignal.any([
+              job.controller.signal,
+              turnController.signal,
+            ]);
+            let usageWriteError = null,
+              turnError = null;
+            const choices = await Promise.allSettled(
               ["A", "B"].map(async (id, i) => {
                 const start = Date.now();
                 const report = (event) => {
@@ -218,8 +236,43 @@ export async function createApp({
                       ? "Запускаю Codex и передаю наблюдение"
                       : "Бот выбирает действие",
                 });
+                const request =
+                  input.mode === "codex"
+                    ? {
+                        id: randomUUID(),
+                        provider: "codex-cli",
+                        model: match.model,
+                        reasoning: match.reasoning,
+                        cliVersion: match.cliVersion,
+                        agent: id,
+                        turn: prepared.turn,
+                        startedAt: new Date(start).toISOString(),
+                        status: "pending",
+                        rawUsage: null,
+                        threadId: null,
+                      }
+                    : null;
+                const recordUsage = ({ usage, threadId }) => {
+                  if (!request) return;
+                  request.rawUsage = structuredClone(usage);
+                  request.threadId = threadId ?? request.threadId;
+                  request.reportedAt = new Date().toISOString();
+                  void persist(match).catch((error) => {
+                    usageWriteError = error;
+                  });
+                  publish(job, {
+                    type: "usage",
+                    matchId: match.id,
+                    agent: id,
+                    turn: prepared.turn,
+                  });
+                };
                 let decision;
                 try {
+                  if (request) {
+                    match.requests.push(request);
+                    await persist(match);
+                  }
                   decision =
                     input.mode === "codex"
                       ? await provider(
@@ -230,11 +283,17 @@ export async function createApp({
                             model: match.model,
                             reasoning: match.reasoning,
                             timeout: match.decisionTimeoutMs,
-                            signal: job.controller.signal,
+                            signal: turnSignal,
                             onEvent: report,
+                            onUsage: recordUsage,
                           },
                         )
                       : botDecision(observations[id], i ? "hunt" : "control");
+                  if (request) {
+                    if (!request.rawUsage && decision.usage)
+                      recordUsage({ usage: decision.usage });
+                    request.status = "complete";
+                  }
                   report({
                     phase: "ready",
                     text: decision.reason,
@@ -242,6 +301,10 @@ export async function createApp({
                     elapsedMs: Date.now() - start,
                   });
                 } catch (error) {
+                  if (request)
+                    request.status = turnSignal.aborted ? "cancelled" : "error";
+                  turnError ??= error;
+                  turnController.abort();
                   report({
                     phase: job.controller.signal.aborted
                       ? "cancelled"
@@ -249,12 +312,21 @@ export async function createApp({
                     text: error.message,
                   });
                   throw error;
+                } finally {
+                  if (request) {
+                    request.finishedAt = new Date().toISOString();
+                    request.elapsedMs = Date.now() - start;
+                    await persist(match);
+                  }
                 }
                 return [id, { ...decision, elapsedMs: Date.now() - start }];
               }),
             );
+            if (usageWriteError) throw usageWriteError;
+            const rejected = choices.find((c) => c.status === "rejected");
+            if (rejected) throw turnError ?? rejected.reason;
             if (job.controller.signal.aborted) break;
-            const decisions = Object.fromEntries(choices);
+            const decisions = Object.fromEntries(choices.map((c) => c.value));
             for (const id of ["A", "B"]) memory[id] = decisions[id].memory;
             const frame = resolveTurn(prepared, decisions);
             state = frame.state;
@@ -404,6 +476,39 @@ export async function createApp({
           });
         return json(res, 200, { fighters: match.fighters });
       }
+      const seriesMatch = path.match(/^\/api\/series\/([\da-f-]{36})$/);
+      if (seriesMatch && req.method === "GET") {
+        const files = (await readdir(matchesDir)).filter((f) =>
+          f.endsWith(".json"),
+        );
+        const matches = (
+          await Promise.all(
+            files.map(async (file) => {
+              try {
+                const m = JSON.parse(
+                  await readFile(join(matchesDir, file), "utf8"),
+                );
+                if (m.series !== seriesMatch[1]) return null;
+                if (m.status === "running" && !liveMatch(m.id))
+                  m.status = "interrupted";
+                m.usage = matchUsage(m);
+                return m;
+              } catch {
+                return null;
+              }
+            }),
+          )
+        )
+          .filter(Boolean)
+          .sort((a, b) => a.created.localeCompare(b.created));
+        if (!matches.length)
+          return json(res, 404, { error: "Серия не найдена" });
+        return json(res, 200, {
+          id: seriesMatch[1],
+          matches,
+          statistics: seriesStats(matches),
+        });
+      }
       const idMatch = path.match(/^\/api\/matches\/([\da-f-]{36})$/);
       if (idMatch && req.method === "GET") {
         try {
@@ -412,6 +517,7 @@ export async function createApp({
           );
           if (m.status === "running" && !liveMatch(m.id))
             m.status = "interrupted";
+          m.usage = matchUsage(m);
           return json(res, 200, m);
         } catch {
           return json(res, 404, { error: "Матч не найден" });
@@ -556,6 +662,7 @@ export async function createApp({
         "/arena.js": "arena.js",
         "/sound.js": "sound.js",
         "/fighters.js": "fighters.js",
+        "/match-stats.js": "match-stats.js",
         "/style.css": "style.css",
         "/favicon.svg": "../site/favicon.svg",
         "/logo.svg": "../site/logo.svg",

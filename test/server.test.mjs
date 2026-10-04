@@ -1,17 +1,83 @@
 import http from "node:http";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server.mjs";
 import { botDecision } from "../src/agents.mjs";
+import { createState } from "../src/engine.mjs";
+
+test("restart recovers interrupted usage and archived series without inventing zero spend", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "arena-restart-"));
+  const app = await createApp({
+    dataDir: dir,
+    status: { available: false },
+    modelCatalog: [],
+  });
+  await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
+  t.after(async () => {
+    app.stop();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const id = "00000000-0000-0000-0000-000000000001",
+    series = "00000000-0000-0000-0000-000000000002";
+  await writeFile(
+    join(dir, "matches", `${id}.json`),
+    JSON.stringify({
+      id,
+      series,
+      mode: "codex",
+      model: "fixture",
+      seed: "restart",
+      created: new Date().toISOString(),
+      status: "running",
+      frames: [{ state: createState("restart"), decisions: {}, events: [] }],
+      requests: [
+        {
+          id: "reported",
+          agent: "A",
+          status: "complete",
+          rawUsage: { input_tokens: 100, output_tokens: 20 },
+        },
+        { id: "unfinished", agent: "B", status: "pending", rawUsage: null },
+      ],
+    }),
+  );
+  const base = `http://127.0.0.1:${app.server.address().port}`;
+  for (const path of [
+    `/api/matches/${id}`,
+    "/api/matches",
+    `/api/series/${series}`,
+  ]) {
+    const data = await (await fetch(base + path)).json();
+    const match = Array.isArray(data)
+      ? data[0]
+      : data.matches
+        ? data.matches[0]
+        : data;
+    assert.equal(match.status, "interrupted");
+    assert.equal(match.usage.total, 120);
+    assert.equal(match.usage.missing, 1);
+    assert.equal(match.usage.pending, 0);
+    assert.equal(match.usage.complete, false);
+  }
+});
 
 test("local API: real engine, replay persistence, series, errors and cancellation", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "arena-test-"));
   let behavior = "bot";
-  const provider = async (o, _p, _m, { signal }) => {
-    if (behavior === "error") throw new Error("Provider test failure");
+  const provider = async (o, _p, _m, { signal, onUsage }) => {
+    const usage = {
+      input_tokens: 100,
+      cached_input_tokens: 50,
+      output_tokens: 10,
+      reasoning_output_tokens: 5,
+    };
+    if (behavior === "error") {
+      if (o.self.id === "A") onUsage({ usage, threadId: "fixture-thread" });
+      throw new Error("Provider test failure");
+    }
     if (behavior === "slow")
       await new Promise((resolve, reject) => {
         if (signal.aborted) return reject(new Error("aborted"));
@@ -19,12 +85,21 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
           once: true,
         });
       });
-    return botDecision(o, o.self.id === "A" ? "control" : "hunt");
+    onUsage({ usage, threadId: "fixture-thread" });
+    onUsage({ usage, threadId: "fixture-thread" }); // Replayed event must not double count.
+    return { ...botDecision(o, o.self.id === "A" ? "control" : "hunt"), usage };
   };
   const app = await createApp({
     dataDir: dir,
     status: { available: true, version: "fixture", model: "fixture" },
-    modelCatalog: [{ id: "fixture", name: "Fixture", efforts: ["low"], defaultReasoning: "low" }],
+    modelCatalog: [
+      {
+        id: "fixture",
+        name: "Fixture",
+        efforts: ["low"],
+        defaultReasoning: "low",
+      },
+    ],
     provider,
   });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
@@ -90,6 +165,24 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
   const replay = await (await fetch(`${base}/api/matches/${file.id}`)).json();
   assert.deepEqual(replay.frames, file.frames);
   assert.equal(replay.prompts[0], input.prompts[0]);
+  assert.equal(replay.requests.length, (replay.frames.length - 1) * 2);
+  assert.equal(replay.usage.total, replay.requests.length * 110);
+  assert.equal(replay.usage.cached, replay.requests.length * 50);
+  assert.equal(replay.usage.complete, true);
+  assert.ok(
+    replay.requests.every(
+      (r) =>
+        r.model === "fixture" &&
+        r.reasoning === "low" &&
+        r.status === "complete",
+    ),
+  );
+  assert.equal(
+    new Set(replay.requests.map((r) => r.id)).size,
+    replay.requests.length,
+  );
+  const history = await (await fetch(base + "/api/matches")).json();
+  assert.deepEqual(history.find((m) => m.id === replay.id).usage, replay.usage);
   assert.equal(
     (await readdir(join(dir, "matches"))).filter((x) => x.endsWith(".json"))
       .length,
@@ -100,6 +193,10 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
   ).json();
   const sj = await wait(series.id);
   assert.equal(sj.matches.length, 4);
+  assert.equal(
+    sj.statistics.usage.total,
+    sj.matches.reduce((s, m) => s + m.usage.total, 0),
+  );
   assert.deepEqual(
     sj.matches.map((m) => m.swap),
     [false, true, false, true],
@@ -109,12 +206,27 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
     sj.matches[0].frames[0].state.walls,
     sj.matches[1].frames[0].state.walls,
   );
+  const savedSeries = await (
+    await fetch(`${base}/api/series/${series.id}`)
+  ).json();
+  assert.equal(savedSeries.matches.length, 4);
+  assert.deepEqual(savedSeries.statistics, sj.statistics);
   behavior = "error";
   const fail = await (await post("/api/run", input)).json();
   const fj = await wait(fail.id);
   assert.equal(fj.status, "error");
   assert.equal(fj.matches[0].status, "error");
   assert.equal(fj.matches[0].frames.length, 1);
+  assert.equal(
+    fj.matches[0].usage.total,
+    110,
+    "known usage survives a failed turn without a frame",
+  );
+  assert.equal(fj.matches[0].usage.missing, 1);
+  const failedReplay = await (
+    await fetch(`${base}/api/matches/${fj.matches[0].id}`)
+  ).json();
+  assert.deepEqual(failedReplay.usage, fj.matches[0].usage);
   behavior = "slow";
   const slow = await (await post("/api/run", input)).json();
   await new Promise((r) => setTimeout(r, 30));
@@ -127,6 +239,11 @@ test("local API: real engine, replay persistence, series, errors and cancellatio
     await readFile(join(dir, "matches", `${cj.matches[0].id}.json`), "utf8"),
   );
   assert.equal(saved.status, "cancelled");
+  assert.equal(saved.requests.length, 2);
+  assert.ok(saved.requests.every((r) => r.status === "cancelled"));
+  assert.equal(saved.usage.total, null);
+  assert.equal(saved.usage.missing, 2);
+  assert.equal(saved.usage.pending, 0);
 });
 
 test("SSE emits model output before action completes and persists appearance and messages", async (t) => {
@@ -148,7 +265,14 @@ test("SSE emits model output before action completes and persists appearance and
   const app = await createApp({
     dataDir: dir,
     status: { available: true, model: "fixture", version: "fixture" },
-    modelCatalog: [{ id: "fixture", name: "Fixture", efforts: ["low"], defaultReasoning: "low" }],
+    modelCatalog: [
+      {
+        id: "fixture",
+        name: "Fixture",
+        efforts: ["low"],
+        defaultReasoning: "low",
+      },
+    ],
     provider,
   });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
